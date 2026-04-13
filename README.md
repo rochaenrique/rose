@@ -1,5 +1,8 @@
 # Minimum Necessary
 Stuff to do so it's basically a reduced raylib
+ - [ ] Windows glfw port
+ - [ ] Revert back to single window and single update function API (for now)
+ - [ ] <win32.h> Port
 
  - UI improvements
    - [ ] Push and get from clipboard
