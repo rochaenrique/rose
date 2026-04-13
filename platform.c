@@ -1,10 +1,17 @@
 #include "platform.h"
 
-V4f v4f_point_add(V2f point, V2f add)
+High_Freq_Time high_freq_time_from_ns(u64 nanos)
 {
-  V4f result = {0};
-  result.p0 = point;
-  result.p1 = v2f_add(point, add);
+  High_Freq_Time result = {0};
+  result.ns = nanos;
+  result.ms = nanos * 0.0000001;
+  result.s  = nanos * 0.0000000001;
+  return result;
+}
+
+Range_V2f texture_rect_range(Image_Texture texture)
+{
+  Range_V2f result = range_from_size(texture.size);
   return result;
 }
 
@@ -87,7 +94,7 @@ String debug_input_event_str(Arena *arena, Input_Event* event)
     
     case InputEventKind_Text:
     {
-      snprintf(buffer, sizeof(buffer), "Text[codepoint=%d]", event->text_code_point);
+      snprintf(buffer, sizeof(buffer), "Text[codepoint=%d]", event->code_point);
     } break;
     
     case InputEventKind_KeyDown:
@@ -151,6 +158,12 @@ b32 key_pressed(Input_State *input, Key_Code code)
   return result;
 }
 
+b32 key_pressed_modded(Input_State *input, Key_Code code, Modifier_Flags mods)
+{
+  b32 result = key_pressed(input, code) && (input->modifiers & mods);
+  return result;
+}
+
 b32 key_released(Input_State *input, Key_Code code)
 {
   b32 result = key_touched(input, code) && key_up(input, code);
@@ -193,7 +206,7 @@ b32 mouse_button_released(Input_State *input, Mouse_Code code)
 
 V2f measure_text_size_ignore_lines_and_tabs(Font_Data *font_data, String str, f32 font_height, f32 spacing)
 {
-  V2f result = {0};
+  f32 pen_x = 0;
   
   f32 scale = font_height/font_data->height;
   
@@ -205,17 +218,15 @@ V2f measure_text_size_ignore_lines_and_tabs(Font_Data *font_data, String str, f3
     if (ch != '\n' && ch != '\t') 
     {
       Glyph_Info info = font_data->ascii_glyph_table[(u32)ch];
-      
       if (char_idx < str.length - 1) 
       {
-        result.x += spacing;
+        pen_x += spacing;
       }
-      
-      result.x += info.advance_x * scale;
-      result.y = max(result.y, info.size.y * scale);
+      pen_x += info.advance_x * scale;
     }
   }
   
+  V2f result = v2f(pen_x, font_height);
   return result;
 }
 
@@ -269,7 +280,7 @@ Corner_Colors corner_colors_left_right(V4f color_left, V4f color_right)
 }
 
 Render_Rect *append_render_rect(Render_Data *renderer, 
-                                V4f dest_rect, V4f src_rect, 
+                                Range_V2f dest_rect, Range_V2f src_rect, 
                                 f32 corner_radius, f32 edge_softness, f32 border_thickness,
                                 Corner_Colors colors, u32 texture_id)
 {
@@ -277,10 +288,12 @@ Render_Rect *append_render_rect(Render_Data *renderer,
   u32 rect_idx = renderer->rects.count;
   pf_assert(renderer->rects.count <= renderer->rects.capacity);
   Render_Rect *rect = (renderer->rects.buffer + renderer->rects.count++);
-  rect->dest_p0 = dest_rect.p0;
-  rect->dest_p1 = dest_rect.p1;
-  rect->src_p0 = src_rect.p0;
-  rect->src_p1 = src_rect.p1;
+  
+  rect->dest_bottom_left = dest_rect.min;
+  rect->dest_top_right = dest_rect.max;
+  rect->src_bottom_left = src_rect.min;
+  rect->src_top_right = src_rect.max;
+  
   rect->corner_radius = corner_radius;
   rect->edge_softness = edge_softness;
   rect->border_thickness = border_thickness;
@@ -316,76 +329,120 @@ Render_Rect *append_render_rect(Render_Data *renderer,
   return rect;
 }
 
-void render_rect(Render_Data *renderer, V4f rect, V4f color)
+Range_V2f rect_to_render_range(Render_Data *renderer, Screen_Rect_f32 rect)
+{
+  Range_V2f result = to_range(rect, renderer->screen_size.y);
+  return result;
+}
+
+void render_rect(Render_Data *renderer, Screen_Rect_f32 rect, V4f color)
 {
   append_render_rect(renderer, 
-                     rect, 
-                     v4f_point_add(v2ff(0), renderer->blank_image_texture.size), 
+                     rect_to_render_range(renderer, rect), 
+                     texture_rect_range(renderer->blank_image_texture),
                      0, 0, 0,
                      corner_colors_single(color), 
                      renderer->blank_image_texture.id);
 }
 
-void render_rect_gradient(Render_Data *renderer, V4f rect, Corner_Colors colors)
+void render_rect_blank_texture(Render_Data *renderer, 
+                               Screen_Rect_f32 rect,
+                               f32 corner_radius, 
+                               f32 edge_softness, 
+                               f32 border_thickness,
+                               Corner_Colors colors)
 {
   append_render_rect(renderer, 
-                     rect, 
-                     v4f_point_add(v2ff(0), renderer->blank_image_texture.size), 
+                     rect_to_render_range(renderer, rect), 
+                     texture_rect_range(renderer->blank_image_texture),
+                     corner_radius, 
+                     edge_softness, 
+                     border_thickness,
+                     colors, 
+                     renderer->blank_image_texture.id);
+}
+
+void render_rect_gradient(Render_Data *renderer, Screen_Rect_f32 rect, Corner_Colors colors)
+{
+  append_render_rect(renderer, 
+                     rect_to_render_range(renderer, rect), 
+                     texture_rect_range(renderer->blank_image_texture),
                      0, 0, 0,
                      colors, renderer->blank_image_texture.id);
 }
 
-void render_rect_rounded(Render_Data *renderer, V4f rect, V4f color, f32 corner_radius)
+void render_rect_rounded(Render_Data *renderer, Screen_Rect_f32 rect, V4f color, f32 corner_radius)
 {
   append_render_rect(renderer, 
-                     rect,
-                     v4f_point_add(v2ff(0), renderer->blank_image_texture.size),
+                     rect_to_render_range(renderer, rect), 
+                     texture_rect_range(renderer->blank_image_texture),
                      corner_radius, 
-                     2.0f,
+                     0.5f,
                      0,
                      corner_colors_single(color), 
                      renderer->blank_image_texture.id);
 }
 
-void render_rect_lines(Render_Data *renderer, V4f rect, V4f color, f32 border_thickness)
+void render_rect_gradient_rounded(Render_Data *renderer, Screen_Rect_f32 rect, Corner_Colors colors, f32 corner_radius)
 {
   append_render_rect(renderer, 
-                     rect,
-                     v4f_point_add(v2ff(0), renderer->blank_image_texture.size),
+                     rect_to_render_range(renderer, rect), 
+                     texture_rect_range(renderer->blank_image_texture),
+                     corner_radius, 
+                     0.5f, 
+                     0,
+                     colors, renderer->blank_image_texture.id);
+}
+
+void render_rect_lines(Render_Data *renderer, Screen_Rect_f32 rect, V4f color, f32 border_thickness)
+{
+  append_render_rect(renderer, 
+                     rect_to_render_range(renderer, rect), 
+                     range_point_add(v2ff(0), renderer->blank_image_texture.size),
                      0, 0,
                      border_thickness,
                      corner_colors_single(color), 
                      renderer->blank_image_texture.id);
 }
 
-void render_rect_lines_rounded(Render_Data *renderer, V4f rect, V4f color, f32 corner_radius, f32 border_thickness)
+void render_rect_lines_rounded(Render_Data *renderer, Screen_Rect_f32 rect, V4f color, f32 corner_radius, f32 border_thickness)
 {
   append_render_rect(renderer, 
-                     rect,
-                     v4f_point_add(v2ff(0), renderer->blank_image_texture.size),
+                     rect_to_render_range(renderer, rect), 
+                     range_point_add(v2ff(0), renderer->blank_image_texture.size),
                      corner_radius, 
-                     2.0f,
+                     0.5f,
                      border_thickness,
                      corner_colors_single(color), 
                      renderer->blank_image_texture.id);
 }
 
-void render_texture(Render_Data *renderer, V4f rect, Image_Texture texture)
+void render_texture(Render_Data *renderer, Screen_Rect_f32 rect, Image_Texture texture)
 {
   append_render_rect(renderer, 
-                     rect, 
-                     v4f_point_add(v2ff(0), texture.size), 
+                     rect_to_render_range(renderer, rect), 
+                     range_point_add(v2ff(0), texture.size),
                      0, 0, 0,
                      corner_colors_single(color_white), texture.id);
 }
 
-V2f render_text(Render_Data *renderer, Font_Data *font_data, String str, V2f position, f32 font_height, f32 spacing, V4f color)
+V2i rect_i32_size(Screen_Rect_i32 rect)
 {
-  f32 text_height = 0;
-  V2f advance_pos = position;
-  
+  V2i result = v2i(rect.left - rect.right, rect.bottom - rect.top);
+  return result;
+}
+
+
+V2f render_text(Render_Data *renderer, Font_Data *font_data, 
+                String str, 
+                V2f top_left, 
+                f32 font_height, f32 spacing, 
+                V4f color)
+{
   f32 scale = font_height/font_data->height;
-  f32 base_line_disp = font_data->below_base_line_height * scale;
+  V2f pen = {0};
+  pen.x = top_left.x;
+  pen.y = top_left.y + font_height - font_data->below_base_line_offset*scale;
   
   for (u32 char_idx = 0;
        char_idx < str.length;
@@ -394,29 +451,49 @@ V2f render_text(Render_Data *renderer, Font_Data *font_data, String str, V2f pos
     char ch = str.value[char_idx];
     Glyph_Info info = font_data->ascii_glyph_table[(u32)ch];
     
-    f32 pos_x = advance_pos.x + info.bearing.x * scale;
-    f32 pos_y = position.y - (info.size.y - info.bearing.y) * scale - base_line_disp;
+    V2f pos = v2f(pen.x + info.bearing.x * scale,
+                  pen.y - info.bearing.y * scale);
     V2f size = v2f_scale(v2fi(info.size), scale);
     
     // NOTE(erb): push rect
     {
-      V4f dest_rect = v4f_point_add(v2f(pos_x, pos_y), size);
-      V4f src_rect = {0};
-      src_rect.p0 = v2f(0, info.size.y); // NOTE(erb): flipped due to freetype storage
-      src_rect.p1 = v2f(info.size.x, 0);
-      append_render_rect(renderer, dest_rect, src_rect, 0, 0, 0, corner_colors_single(color), info.texture_id);
+      Screen_Rect_f32 dest_rect = rect_top_left(pos, size);
+      
+      Range_V2f src_range = {0};
+      src_range.min = v2f(0, info.size.y);
+      src_range.max = v2f(info.size.x, 0);
+      
+      append_render_rect(renderer, 
+                         rect_to_render_range(renderer, dest_rect), 
+                         src_range, 
+                         0, 0, 0, 
+                         corner_colors_single(color), 
+                         info.texture_id);
     }
     
     if (char_idx < str.length - 1) 
     {
-      advance_pos.x += spacing;
+      pen.x += spacing;
     }
     
-    advance_pos.x += info.advance_x * scale;
-    text_height = max(text_height, size.y);
+    pen.x += info.advance_x * scale;
   }
   
-  V2f text_size = v2f(advance_pos.x, text_height);
-  
+  V2f text_size = v2f(pen.x - top_left.x, font_height);
   return text_size;
+}
+
+V2f render_text_face(Render_Data *renderer, Font_Face font_face, 
+                     String str, 
+                     V2f top_left, 
+                     V4f color)
+{
+  V2f result = render_text(renderer, 
+                           font_face.data, 
+                           str, 
+                           top_left, 
+                           font_face.height, 
+                           font_face.spacing, 
+                           color);
+  return result;
 }

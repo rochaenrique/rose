@@ -53,7 +53,7 @@ void pf_free(void *Ptr)
 #define button_row(value) ui_defer_loop(push_button_row(value), pop_button_row())
 void push_button_row()
 {
-	ui_set_next_layout_axis(UI_Axis_X); 
+	ui_set_next_layout_axis(Axis2_X); 
   ui_push_parent(ui_null_parent(UI_Flags_None));
   ui_push_sizing_x(ui_grow());
 }
@@ -444,14 +444,14 @@ int main(void)
     
     ui_begin_frame(v4f(0, 0, GetScreenWidth(), GetScreenHeight()));
     {
-      ui_set_next_layout_axis(UI_Axis_Y);
+      ui_set_next_layout_axis(Axis2_Y);
       ui_padding(v4ff(16)) 
         ui_background_color(v4f(0.1, 0.6, 0.2, 1))
         ui_sizing_x(ui_grow()) 
         ui_parent_zero() // NOTE(erb): ui stuff
       {
         
-        ui_set_next_layout_axis(UI_Axis_X);
+        ui_set_next_layout_axis(Axis2_X);
         ui_padding(v4ff(2))
           ui_sizing_x(ui_grow())
           ui_parent_zero()
@@ -463,7 +463,7 @@ int main(void)
 #define str_button(str) \
 do { if (ui_button((str)).clicked) str_build_str(&scratch, &input_builder, (str)); } while (0)
         
-        ui_set_next_layout_axis(UI_Axis_Y); 
+        ui_set_next_layout_axis(Axis2_Y); 
         ui_background_color(v4f(0.5f, 0.5f, 0.5f, 1)) ui_parent_zero() 
         {
           

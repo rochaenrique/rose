@@ -77,6 +77,31 @@ void scratch_end(Scratch *scratch)
   scratch->position = 0;
 }
 
+void mem_scratch_init(Arena *arena, Scratch_Memory *mem)
+{
+  for (u32 arena_idx = 0;
+       arena_idx < array_size(mem->arenas);
+       arena_idx++)
+  {
+    mem->arenas[arena_idx] = push_sub_arena(arena, kb(8));
+  }
+}
+
+Scratch mem_scratch_begin(Scratch_Memory *mem)
+{
+  Arena *scratch_base = mem->arenas + (mem->counter++ % array_size(mem->arenas));
+  Scratch result = scratch_begin(scratch_base);
+  return result;
+}
+
+void mem_scratch_end(Scratch_Memory *mem, Scratch *scratch)
+{
+  Arena *scratch_base = mem->arenas + (--mem->counter % array_size(mem->arenas));
+  pf_assert(scratch_base == scratch->arena);
+  scratch_end(scratch);
+  mem->counter--;
+}
+
 // //////////////////////////////////////////////
 // NOTE(erb): hash
 // //////////////////////////////////////////////
@@ -697,31 +722,65 @@ String str_build_str(Arena *arena, String_Builder *builder, String str)
 	return str;
 }
 
-String str_build_replace(Arena *arena, Arena *temp_arena, String_Builder *builder, 
-                         String replace_str, u64 replace_min, u64 replace_max)
+typedef union Range_u64 
 {
-  String result = {0};
-  if (replace_min <= replace_max &&
-      replace_min >= 0 && replace_min < builder->buffer.length && 
-      replace_min >= 0 && replace_max <= builder->buffer.length) 
+  struct { u64 begin, end; };
+  struct { u64 min, max; };
+} Range_u64;
+
+u64 range_u64_size(Range_u64 range)
+{
+  u64 size = range.max - range.min;
+  return size;
+}
+
+Range_u64 range_u64_from_size(u64 size)
+{
+  Range_u64 result = {0};
+  result.max = size;
+  return result;
+}
+
+b32 range_u64_inclusive(Range_u64 range, u64 value)
+{
+  b32 result = (range.min <= value && 
+                value <= range.max);
+  return result;
+}
+
+b32 range_u64_inclusive_range(Range_u64 in, Range_u64 container)
+{
+  b32 result = (range_u64_inclusive(container, in.min) &&
+                range_u64_inclusive(container, in.max));
+  return result;
+}
+
+void str_build_replace(Arena *arena, 
+                       String_Builder *builder, 
+                       String replace_str, 
+                       Range_u64 replace_range)
+{
+  if (range_u64_inclusive_range(replace_range, range_u64_from_size(builder->buffer.length))) 
   {
-    i32 diff = replace_str.length - (replace_max-replace_min);
+    i32 diff = replace_str.length - range_u64_size(replace_range);
     if (diff > 0) 
     {
       str_builder_grow_maybe(arena, builder, diff);
     }
     
-    String post_replace = str_copy(temp_arena, str_from(builder->buffer, replace_max));
-    u8 *replace_dest = (u8 *)(builder->buffer.value + replace_min);
-    u8 *advance = replace_dest + replace_str.length;
-    
-    mem_copy((u8 *)post_replace.value, advance, post_replace.length);
-    mem_copy((u8 *)replace_str.value, replace_dest, replace_str.length);
-    
-    builder->buffer.length += diff;
+    Scratch scratch = scratch_begin(arena);
+    {
+      String post_replace = str_copy(scratch.arena, str_from(builder->buffer, replace_range.max));
+      u8 *replace_dest = (u8 *)(builder->buffer.value + replace_range.min);
+      u8 *advance = replace_dest + replace_str.length;
+      
+      mem_copy((u8 *)post_replace.value, advance, post_replace.length);
+      mem_copy((u8 *)replace_str.value, replace_dest, replace_str.length);
+      
+      builder->buffer.length += diff;
+    }
+    scratch_end(&scratch);
   }
-  
-  return result;
 }
 
 String join_cargs(Arena *arena, i32 arg_count, char **args)
@@ -884,6 +943,14 @@ V2f v2f_min(V2f a, V2f b)
   return result;
 }
 
+V2f v2f_reverse_y(V2f v, f32 y)
+{
+  V2f result = {0};
+  result.x = v.x;
+  result.y = y - v.y;
+  return result;
+}
+
 // NOTE(erb): v2i
 
 V2i v2i(i32 x, i32 y)
@@ -915,6 +982,12 @@ V2i v2i_sub(V2i a, V2i b)
 	result.x = a.x - b.x;
 	result.y = a.y - b.y;
 	return result;
+}
+
+b32 v2i_equals(V2i a, V2i b)
+{
+  b32 result = (a.x == b.x && a.y == b.y);
+  return result;
 }
 
 // NOTE(erb): v3f
@@ -955,13 +1028,6 @@ V4f v4ff(f32 v)
 	return result;
 }
 
-V2f rect_size(V4f rect) 
-{
-  V2f result = {0};
-  result = v2f_abs(v2f_sub(rect.p1, rect.p0));
-  return result;
-}
-
 V4f with_alpha(V4f color, f32 a)
 {
   V4f result = color;
@@ -978,3 +1044,137 @@ V4f v4f_lerp(V4f min, V4f max, f32 t)
   result.w = lerp(min.w, max.w, t);
   return result;
 }
+
+// NOTE(erb): rects and ranges
+V2f rect_size(Screen_Rect_f32 size);
+
+Range_V2f range_point_add(V2f point, V2f add)
+{
+  Range_V2f result = {0};
+  result.min = point;
+  result.max = v2f_add(point, add);
+  return result;
+}
+
+Range_V2f to_range(Screen_Rect_f32 srect, f32 max_y)
+{
+  V2f size = rect_size(srect);
+  V2f pos = v2f(srect.left, max_y - srect.top - size.y);
+  Range_V2f result = range_point_add(pos, size);
+  return result;
+}
+
+Range_V2f range_from_size(V2f size)
+{
+  Range_V2f result = {0};
+  result.max = size;
+  return result;
+}
+
+Screen_Rect_f32 rect_from_size(V2f size)
+{
+  Screen_Rect_f32 result = {0};
+  result.bottom_right = size;
+  return result;
+}
+
+Screen_Rect_f32 rect_top_left(V2f top_left, V2f size)
+{
+  Screen_Rect_f32 result = {0};
+  result.top_left = top_left;
+  result.bottom_right = v2f_add(top_left, size);
+  return result;
+}
+
+Screen_Rect_f32 rect_center(V2f center, V2f size)
+{
+  V2f top_left = v2f_sub(center, v2f_scale(size, 0.5f));
+  Screen_Rect_f32 result = rect_top_left(top_left, size);
+  return result;
+}
+
+V2f rect_size(Screen_Rect_f32 size)
+{
+  V2f result = v2f(size.right - size.left, size.bottom - size.top);
+  return result;
+}
+
+#if 0
+
+Range_V2f rect_size(Range_V2f rect) 
+{
+  V2f result = v2f_abs(v2f_sub(rect.max, rect.min));
+  return result;
+}
+
+Range_V2f rect_top_left(V2f pos, V2f size)
+{
+  V2f bottom_left = v2f_sub(pos, v2f(0, size.y));
+  V4f result = v4f_point_add(bottom_left, size);
+  return result;
+}
+
+V4f rect_top_right(V2f pos, V2f size)
+{
+  V2f bottom_left = v2f_sub(pos, size);
+  V4f result = v4f_point_add(bottom_left, size);
+  return result;
+}
+
+V4f rect_bottom_left(V2f pos, V2f size)
+{
+  V4f result = v4f_point_add(pos, size);
+  return result;
+}
+
+V4f rect_bottom_right(V2f pos, V2f size)
+{
+  V2f bottom_left = v2f_sub(pos, v2f(size.x, 0));
+  V4f result = v4f_point_add(bottom_left, size);
+  return result;
+}
+
+V4f rect_bottom_at(V4f rect, V2f at)
+{
+  V2f size = rect_size(rect);
+  V4f result = {0};
+  result.p0.x = rect.p0.x;
+  result.p0.y = at.y;
+  result.p1.x = rect.p1.x;
+  result.p1.y = at.y + size.y;
+  return result;
+}
+
+V4f rect_top_at(V4f rect, V2f at)
+{
+  V2f size = rect_size(rect);
+  V4f result = {0};
+  result.p0.x = rect.p0.x;
+  result.p0.y = at.y - size.y;
+  result.p1.x = rect.p1.x;
+  result.p1.y = at.y;
+  return result;
+}
+
+V4f rect_left_at(V4f rect, V2f at)
+{
+  V2f size = rect_size(rect);
+  V4f result = {0};
+  result.p0.x = at.x;
+  result.p0.y = rect.p0.y;
+  result.p1.x = at.x + size.x;
+  result.p1.y = rect.p1.y;
+  return result;
+}
+
+V4f rect_right_at(V4f rect, V2f at)
+{
+  V2f size = rect_size(rect);
+  V4f result = {0};
+  result.p0.x = at.x - size.x;
+  result.p0.y = rect.p0.y;
+  result.p1.x = at.x;
+  result.p1.y = rect.p1.y;
+  return result;
+}
+#endif

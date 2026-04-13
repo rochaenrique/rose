@@ -3,6 +3,7 @@
 #define PLATFORM_H
 
 #include "core.h"
+#include "debug.h"
 
 typedef struct Corner_Colors
 {
@@ -14,10 +15,10 @@ typedef struct Corner_Colors
 
 typedef struct Render_Rect 
 {
-  V2f dest_p0;
-  V2f dest_p1;
-  V2f src_p0;
-  V2f src_p1;
+  V2f dest_bottom_left;
+  V2f dest_top_right;
+  V2f src_bottom_left;
+  V2f src_top_right;
   
   V4f color_bottom_left;
   V4f color_bottom_right;
@@ -51,10 +52,10 @@ typedef struct Image_Texture
 
 typedef struct Glyph_Info
 {
-  u32 texture_id;
-  V2i size;
   V2i bearing;
+  V2i size;
   u32 advance_x;
+  u32 texture_id;
 } Glyph_Info;
 
 typedef struct Render_Batch
@@ -70,6 +71,9 @@ typedef struct Render_Data
   u32 vbo;
   u32 program;
   
+  V2i screen_size;
+  V2i frame_buffer_size;
+  
   Render_Rect_Buffer rects;
   
   u32 batch_count;
@@ -77,15 +81,23 @@ typedef struct Render_Data
   
   Image_Texture blank_image_texture;
   
-  i64 shaders_load_time;
 } Render_Data;
 
 typedef struct Font_Data
 {
   i32 height;
-  i32 below_base_line_height;
+  i32 below_base_line_offset;
+  i32 above_base_line_offset;
   Glyph_Info ascii_glyph_table[128];
 } Font_Data;
+
+typedef struct Font_Face
+{
+  Font_Data *data;
+  f32 height;
+  f32 spacing;
+  f32 line_spacing;
+} Font_Face;
 
 typedef struct Loaded_Image
 {
@@ -333,7 +345,7 @@ typedef struct Input_Event
       V2i frame_buffer;
     } window_resize;
     
-    u32 text_code_point;
+    u32 code_point;
     
     struct 
     {
@@ -391,37 +403,41 @@ typedef struct Input_State
   
   Input_Button keys[KeyCode_COUNT];
   Input_Button mouse_buttons[MouseCode_COUNT];
+  
+  Input_Event event_stream[64];
+  u32 event_stream_count;
 } Input_State;
 
-typedef struct Window
-{
-  void *platform_handle;
-  Input_State input;
-} Window;
+typedef u32 Window_ID;
+typedef u32 Render_ID;
 
-// NOTE(erb): allocation
-#define PLATFORM_ALLOCATE(name) void* name(u64 size)
-typedef PLATFORM_ALLOCATE(Platform_Allocate_Func);
+// NOTE(erb): window
+#define PLATFORM_MAKE_WINDOW(name) Window_ID name(String title, V2i size)
+typedef PLATFORM_MAKE_WINDOW(Platform_Make_Window_Func);
 
-#define PLATFORM_FREE(name) void name(void *memory, u64 size)
-typedef PLATFORM_FREE(Platform_Free_Func);
+#define PLATFORM_GET_WINDOW_EVENTS(name) Input_State *name(Window_ID handle)
+typedef PLATFORM_GET_WINDOW_EVENTS(Platform_Get_Window_Events_Func);
 
-// NOTE(erb): date
-#define PLATFORM_GET_TODAY(name) Date name()
-typedef PLATFORM_GET_TODAY(Platform_Get_Today_Func);
+#define PLATFORM_GET_RENDERER_BUFFER(name) Render_Data *name(Window_ID handle)
+typedef PLATFORM_GET_RENDERER_BUFFER(Platform_Get_Renderer_Buffer_Func);
 
-// NOTE(erb): font
-#define PLATFORM_LOAD_FONT(name) Font_Data *name(Arena *arena, String path)
-typedef PLATFORM_LOAD_FONT(Platform_Load_Font_Func);
+#define PLATFORM_GET_DEFAULT_FONT(name) Font_Data *name(Window_ID handle)
+typedef PLATFORM_GET_DEFAULT_FONT(Platform_Default_Font_Func);
+
+#define PLATFORM_GET_CLIPBOARD_STRING(name) String name(Window_ID handle, Arena *arena)
+typedef PLATFORM_GET_CLIPBOARD_STRING(Platform_Get_Clipboard_String_Func);
+
+#define PLATFORM_SET_CLIPBOARD_STRING(name) void name(Window_ID handle, String str)
+typedef PLATFORM_SET_CLIPBOARD_STRING(Platform_Set_Clipboard_String_Func);
 
 typedef struct Platform_Code
 {
-  Platform_Allocate_Func *allocate;
-  Platform_Free_Func *free;
-  Platform_Get_Today_Func *get_today;
-  
-  Platform_Load_Font_Func *load_font;
-  
+  Platform_Get_Clipboard_String_Func *get_clipboard_str;
+  Platform_Set_Clipboard_String_Func *set_clipboard_str;
+  Platform_Make_Window_Func *make_window;
+  Platform_Get_Window_Events_Func *get_window_events;
+  Platform_Get_Renderer_Buffer_Func *get_renderer_buffer;
+  Platform_Default_Font_Func *get_default_font;
 } Platform_Code;
 Platform_Code g_platform;
 
@@ -446,7 +462,9 @@ typedef struct App_Update_Result
 // ////////////////////////////////////////////////
 // Entry point
 // ////////////////////////////////////////////////
-#define UPDATE_AND_RENDER(name) App_Update_Result name(App_Memory *memory, Input_State *input, Render_Data *renderer, Font_Data *default_font, String exec_directory)
+#define UPDATE_AND_RENDER(name) App_Update_Result name(App_Memory *memory, \
+String exec_directory, \
+Debug_Counters frame_debug_counters)
 typedef UPDATE_AND_RENDER(Update_And_Render_Func);
 // ////////////////////////////////////////////////
 

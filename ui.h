@@ -3,19 +3,20 @@
 #ifndef UI_H
 #define UI_H
 
-#include "base.h"
+#include "core.h"
+#include "platform.h"
 
 typedef enum UI_Flags
 {
-	UI_Flags_None = 0,
-	UI_Flags_CrossOverlay = (1<<0),
-	UI_Flags_DrawText = (1<<1),
-	UI_Flags_DrawBackGround = (1<<2),
-	UI_Flags_DrawBorder = (1<<3),
-	UI_Flags_DrawRounded = (1<<4),
-	UI_Flags_Clickable = (1<<5),
-	UI_Flags_Floating = (1<<6),
-  UI_Flags_ClipRectangle = (1<<7),
+	UIFlags_None = 0,
+	UIFlags_CrossOverlay = (1<<0),
+	UIFlags_DrawText = (1<<1),
+	UIFlags_DrawBackGround = (1<<2),
+	UIFlags_DrawBorder = (1<<3),
+	UIFlags_DrawRounded = (1<<4),
+	UIFlags_Clickable = (1<<5),
+	UIFlags_Floating = (1<<6),
+  UIFlags_ClipRectangle = (1<<7),
 } UI_Flags;
 
 typedef struct UI_Key
@@ -25,20 +26,20 @@ typedef struct UI_Key
   u64 parent;
 } UI_Key;
 
-typedef enum UI_Axis
-{
-  UI_Axis_X,
-  UI_Axis_Y,
-  UI_Axis_Count,
-} UI_Axis;
-
 typedef enum UI_Sizing
 {
-	UI_Sizing_Fit,
-	UI_Sizing_Grow,
-	UI_Sizing_Shrink,
-	UI_Sizing_Fixed,
+	UISizing_Fit,
+	UISizing_Grow,
+	UISizing_Shrink,
+	UISizing_Fixed,
 } UI_Sizing;
+
+typedef enum UI_Align
+{
+  UIAlign_Start,
+  UIAlign_Center,
+  UIAlign_End,
+} UI_Align;
 
 typedef struct UI_Sizing_Value
 {
@@ -52,8 +53,6 @@ typedef struct UI_Line_Node
   String content;
 } UI_Line_Node;
 
-typedef Font RL_Font;
-
 typedef struct UI_Text
 {
 	V4f color;
@@ -61,18 +60,19 @@ typedef struct UI_Text
   f32 line_spacing;
   f32 spacing;
   String content;
-  RL_Font raylib_font;
+  Font_Data *font;
   u32 line_count;
+  
   UI_Line_Node *first_line;
   UI_Line_Node *last_line;
 } UI_Text; 
 
 typedef struct Text_Cmd
 {
-  i64 replace_min;
-  i64 replace_max;
-  
+  char single_char;
+  Range_u64 replace_range;
   String replace_str;
+  
   String copy_str;
   i64 new_cursor;
   i64 new_mark;
@@ -86,15 +86,15 @@ typedef struct Text_Edit_State
 
 typedef enum Text_Action_Flags
 {
-  Text_Action_Flags_None = 0,
-  Text_Action_Flags_Copy                = (1 << 0),
-  Text_Action_Flags_Paste               = (1 << 1),
-  Text_Action_Flags_Cut                 = (1 << 2),
-  Text_Action_Flags_Delete              = (1 << 3),
-  Text_Action_Flags_KeepMark            = (1 << 4),
-  Text_Action_Flags_ZeroDeltaWithSelect = (1 << 5),
-  Text_Action_Flags_WordScan            = (1 << 6),
-  Text_Action_Flags_DeltaPickSelectSide = (1 << 7),
+  TextActionFlags_None = 0,
+  TextActionFlags_Copy                = (1 << 0),
+  TextActionFlags_Paste               = (1 << 1),
+  TextActionFlags_Cut                 = (1 << 2),
+  TextActionFlags_Delete              = (1 << 3),
+  TextActionFlags_KeepMark            = (1 << 4),
+  TextActionFlags_ZeroDeltaWithSelect = (1 << 5),
+  TextActionFlags_WordScan            = (1 << 6),
+  TextActionFlags_DeltaPickSelectSide = (1 << 7),
 } Text_Action_Flags;
 
 typedef struct Text_Action
@@ -106,23 +106,20 @@ typedef struct Text_Action
 
 typedef enum UI_Draw_Kind
 {
-	UI_Draw_Kind_Text,
-	UI_Draw_Kind_Rect,
-	UI_Draw_Kind_Rectlines,
-  UI_Draw_Kind_BeginClipRect,
-  UI_Draw_Kind_EndClipRect,
+	UIDrawKind_Text,
+	UIDrawKind_Rect,
+	UIDrawKind_RectLines,
 } UI_Draw_Kind;
 
 typedef struct UI_Draw_Cmd 
 {
 	UI_Draw_Kind kind;
-	V2f pos;
-	V2f size;
+  Screen_Rect_f32 rect;
 	V4f color;
-	f32 border_size;
-	f32 corner_rounded_percent;
+	f32 border_thickness;
+	f32 corner_radius;
 	
-	RL_Font raylib_font;
+  Font_Data *font;
 	String content;
 	f32 font_size;
 	f32 spacing;
@@ -143,16 +140,17 @@ typedef struct UI_Element
 	V2f min_size;
 	V2f max_size;
   
-	UI_Sizing sizing[UI_Axis_Count];
-	UI_Axis layout_axis;
+  UI_Align align[2];
+	UI_Sizing sizing[2];
+	Axis2 layout_axis;
 	
 	UI_Flags flags;
 	
 	V4f background_color;
-	V4f padding;
+  Screen_Rect_f32 padding;
 	V4f border_color;
-	f32 border_size;
-	f32 corner_rounded_percent;
+	f32 border_thickness;
+	f32 corner_radius;
   f32 child_gap;
   UI_Text *text;
   
@@ -181,10 +179,20 @@ typedef struct UI_Element_Out
   b8 dragging;
 } UI_Element_Out;
 
+#define UI_STACK_VALUE(label, Value_Type) \
+Value_Type label##_stack[16]; \
+u32 label##_stack_count
+
 typedef struct UI_Ctx
 {
+  Window_ID window;
+  
+  Scratch_Memory scratch_mem;
 	Arena arena;
 	Arena last_arena;
+  Font_Face default_font_face;
+  
+  Input_State *input;
   
 	UI_Element *element_cache[256];
   UI_Draw_Cmd_List defered_draw;
@@ -199,47 +207,26 @@ typedef struct UI_Ctx
 	UI_Key hot_element;
 	
 	// NOTE(erb): values stack
-	
-	u32 font_size_stack[16];
-	u32 font_size_stack_count;
-	
-	u32 font_spacing_stack[16];
-	u32 font_spacing_stack_count;
-	
-	u32 line_spacing_stack[16];
-	u32 line_spacing_stack_count;
-	
-	u32 child_gap_stack[16];
-	u32 child_gap_stack_count;
-	
-	V4f font_color_stack[16];
-	u32 font_color_stack_count;
-	
-	V4f background_color_stack[16];
-	u32 background_color_stack_count;
-	
-	V4f border_color_stack[16];
-	u32 border_color_stack_count;
-	
-	V4f padding_stack[16];
-	u32 padding_stack_count;
-	
-	UI_Sizing_Value sizing_x_stack[16];
-	u32 sizing_x_stack_count;
-	
-	f32 border_size_stack[16];
-	u32 border_size_stack_count;
-	
-	f32 corner_rounded_percent_stack[16];
-	u32 corner_rounded_percent_stack_count;
   
-  u64 seed_key_stack[16];
-  u64 seed_key_stack_count;
-	
+  UI_STACK_VALUE(font_size, u32);
+  UI_STACK_VALUE(font_spacing, u32);
+	UI_STACK_VALUE(line_spacing, u32);
+	UI_STACK_VALUE(child_gap, u32);
+	UI_STACK_VALUE(font_color, V4f);
+	UI_STACK_VALUE(background_color, V4f);
+	UI_STACK_VALUE(border_color, V4f);
+  UI_STACK_VALUE(padding, Screen_Rect_f32);
+	UI_STACK_VALUE(sizing_x, UI_Sizing_Value);
+  UI_STACK_VALUE(align_x, UI_Align);
+  UI_STACK_VALUE(align_y, UI_Align);
+	UI_STACK_VALUE(border_thickness, f32);
+	UI_STACK_VALUE(corner_radius, f32);
+  UI_STACK_VALUE(seed_key, u64);
+  
 	// NOTE(erb): immediatly setting values
 	
 	b32 has_next_layout_axis;
-	UI_Axis next_layout_axis;
+	Axis2 next_layout_axis;
 	
 	b32 has_next_floating_pos;
 	V2f next_floating_pos;

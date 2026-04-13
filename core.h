@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
-
 typedef uint8_t  b8;
 typedef uint32_t b32;
 
@@ -30,7 +29,9 @@ typedef double f64;
 #define false 0
 #define true 1
 
+#define defer_loop(begin, end) for(int _i_ = ((begin), 0); !_i_; _i_ += 1, (end))
 #define array_size(arr) ((sizeof(arr) / sizeof(*(arr))))
+#define debug_break() __builtin_debugtrap()
 
 #define S(str) (String){.value = str, .length = (sizeof(str) - 1) }
 #define str_expand(str) (i32)str.length, str.value
@@ -38,8 +39,8 @@ typedef double f64;
 #define supress_unused(thing) (((void)(thing)))
 
 #define pf_log(Fmt, ...) fprintf(stdout, Fmt, ##__VA_ARGS__)
-#define pf_assert(condition)										\
-do { if (!(condition)) { fprintf(stdout, "%s:%d: ASSERT [%s] at %s()\n", __FILE__, __LINE__, #condition, __func__); abort(); } } while (0)
+#define pf_assert(condition) \
+(!(condition) ? (fprintf(stdout, "%s:%d: ASSERT [%s] at %s()\n", __FILE__, __LINE__, #condition, __func__), abort()) : false)
 
 // TODO(erb): add proper f32 max value
 #define MAX_f32 10000000000.0f
@@ -72,7 +73,18 @@ typedef struct Date
 } Date; 
 #define date_expand(date) date.month_day, date.month, date.year, date.hours, date.minutes, date.seconds
 
-// ////////////////////////////////////////////////
+typedef struct High_Freq_Time
+{
+  u64 ns;
+  f64 ms;
+  f64 s;
+} High_Freq_Time;
+
+typedef enum Axis2
+{
+  Axis2_X,
+  Axis2_Y,
+} Axis2;
 
 typedef struct Read_File_result
 {
@@ -117,6 +129,12 @@ typedef struct Scratch
   u64 position;
 } Scratch;
 
+typedef struct Scratch_Memory
+{
+  Arena arenas[2];
+  u32 counter;
+} Scratch_Memory;
+
 typedef union V2f
 {
 	struct { f32 x, y; };
@@ -147,19 +165,40 @@ typedef union V4f
   
 	struct { f32 r, g, b, a; };
   struct { V3f rgb; f32 _pad_a; };
-  
-	struct { V2f p0, p1; };
-	struct { f32 left, bottom, right, top; };
-	struct { V2f left_bottom, right_top; };
 	f32 c[4];
 } V4f;
 #define v4_expand(v) v.x, v.y, v.z, v.w
 
+typedef union Screen_Rect_f32
+{
+	struct { V2f top_left, bottom_right; };
+	struct { f32 left, top, right, bottom; };
+  f32 c[4];
+} Screen_Rect_f32;
+
+typedef union Screen_Rect_i32
+{
+	struct { V2i top_left, bottom_right; };
+	struct { i32 left, top, right, bottom; };
+  i32 c[4];
+} Screen_Rect_i32;
+
+typedef union Range_V2f
+{
+	struct { V2f start, end; };
+	struct { V2f min, max; };
+  V2f c[2];
+} Range_V2f;
+
 #define color(R, G, B, A) (V4f){ .r = R, .g = G, .b = B, .a = A }
 V4f color_white = color(1, 1, 1, 1);
+V4f color_black = color(0, 0, 0, 1);
 V4f color_red = color(1, 0, 0, 1);
 V4f color_green = color(0, 1, 0, 1);
+V4f color_yellow = color(1, 1, 0, 1);
+V4f color_cyan = color(0, 1, 1, 1);
 V4f color_blue = color(0, 0, 1, 1);
+V4f color_magenta = color(1, 0, 1, 1);
 V4f color_debug = color(1, 0, 1, 1);
 #undef color
 

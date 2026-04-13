@@ -11,6 +11,7 @@
 #include <sys/time.h>
 #include <sys/errno.h>
 #include <unistd.h>
+#include <mach/mach_time.h>
 
 #define GL_SILENCE_DEPRECATION
 #define GLFW_INCLUDE_NONE
@@ -22,11 +23,59 @@
 
 #include "core.c"
 #include "platform.c"
+#include "debug.h"
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
-#define debug_break() __builtin_debugtrap()
+b32 is_glfw_initialized;
+b32 is_opengl_initialized;
+
+#define glfw_context(glfw_window) defer_loop(glfwMakeContextCurrent(glfw_window), glfwMakeContextCurrent(0))
+
+typedef struct GLFW_Payload
+{
+  Input_Event event_stream[64];
+  u32 event_stream_count;
+} GLFW_Payload;
+
+typedef struct OSX_Window
+{
+  Window_ID id;
+  
+  Input_State input;
+  Render_Data renderer;
+  
+  struct OSX_Window *next;
+  struct OSX_Window *hash_next;
+  
+  Font_Data *default_font;
+  
+  GLFW_Payload glfw_payload;
+  GLFWwindow *glfw;
+} OSX_Window;
+
+typedef struct OSX_State
+{
+  String default_font_path;
+  
+  String vertex_shader_path;
+  String fragment_shader_path;
+  i64 shaders_load_time;
+  
+  String input_file_path;
+  i32 input_file_fd;
+  Debug_State kind;
+  
+  Arena permanent_arena;
+  Arena transient_arena;
+  
+  u32 next_window_id;
+  OSX_Window *window_table[8];
+  
+  OSX_Window *first;
+  OSX_Window *first_free;
+} OSX_State;
 
 typedef struct OSX_App_Library
 {
@@ -42,27 +91,7 @@ typedef struct OSX_Read_File_Result
   i64 load_time;
 } OSX_Read_File_Result;
 
-typedef enum OSX_State_Kind
-{
-  OSXStateKind_None,
-  OSXStateKind_Recording,
-  OSXStateKind_Playing,
-} OSX_State_Kind;
-
-typedef struct OSX_State
-{
-  String file_path;
-  i32 file_fd;
-  OSX_State_Kind kind;
-} OSX_State;
-
-typedef struct GLFW_Event_Payload
-{
-  Arena *arena;
-  Input_Event_List events;
-} GLFW_Event_Payload;
-
-PLATFORM_ALLOCATE(osx_allocate)
+void *osx_allocate(u64 size)
 {
   void *result = 0;
   i32 protection = PROT_READ|PROT_WRITE;
@@ -70,7 +99,7 @@ PLATFORM_ALLOCATE(osx_allocate)
   i32 fd = -1;
   i32 offset = 0;
   
-#if INTERNAL
+#if 0
   // NOTE(erb): start_address and MAP_FIXED flag fix the address for the allocation (for debuging)
   void *start_address = (void *)0x1;
   result = mmap(start_address, size, protection, flags|MAP_FIXED, fd, offset);
@@ -82,7 +111,7 @@ PLATFORM_ALLOCATE(osx_allocate)
   return result;
 }
 
-PLATFORM_FREE(osx_free)
+void osx_free(void *memory, u64 size)
 {
   i32 result = munmap(memory, size);
   pf_assert(result != 0);
@@ -102,7 +131,7 @@ Date osx_tm_to_date(struct tm *time)
 	return result;
 }
 
-PLATFORM_GET_TODAY(osx_get_today)
+Date osx_get_today()
 {
 	struct timeval today;
 	pf_assert(gettimeofday(&today, 0) == 0);
@@ -167,17 +196,23 @@ char *debug_gl_error_code_description(i32 code)
   }
 }
 
+#define gl_check_error(call_str) \
+do \
+{ \
+i32 error = gl_poll_error(); \
+if (error) \
+{ \
+pf_log("%s:%d: [GL CALL ERROR] (0x%x) : \"%s\" : %s : %s\n", __FILE__, __LINE__, error, call_str, \
+debug_gl_error_code_cstr(error), debug_gl_error_code_description(error)); \
+} \
+} while (0)
+
 #define gl(call) \
 do \
 { \
 gl_clear_error(); \
 call; \
-i32 error = gl_poll_error(); \
-if (error) \
-{ \
-pf_log("%s:%d: [GL CALL ERROR] (0x%x) : \"%s\" : %s : %s\n", __FILE__, __LINE__, error, #call, \
-debug_gl_error_code_cstr(error), debug_gl_error_code_description(error)); \
-} \
+gl_check_error(#call); \
 } \
 while (0)
 
@@ -197,7 +232,9 @@ Loaded_Image load_image(char *path)
 
 u32 create_compile_shader(i32 shader_type, const char *src)
 {
+  gl_clear_error();
   u32 shader = glCreateShader(shader_type);
+  gl_check_error("createShader");
   
   gl(glShaderSource(shader, 1, &src, 0));
   gl(glCompileShader(shader));
@@ -264,14 +301,18 @@ OSX_Read_File_Result osx_read_file(Arena *arena, String file_path)
 
 u32 make_program(const char *vertex_src, const char *fragment_src, b32 should_print_log)
 {
+  gl_clear_error();
+  u32 shader_program = glCreateProgram();
+  gl_check_error("glCreateProgram");
+  pf_assert(shader_program != 0 && "glCreateProgram failed");
+  
   // NOTE(erb): shaders setup
   u32 vertex_shader = create_compile_shader(GL_VERTEX_SHADER, vertex_src);
   u32 fragment_shader = create_compile_shader(GL_FRAGMENT_SHADER, fragment_src);
   
-  u32 shader_program = glCreateProgram();
-  glAttachShader(shader_program, vertex_shader);
-  glAttachShader(shader_program, fragment_shader);
-  glLinkProgram(shader_program);
+  gl(glAttachShader(shader_program, vertex_shader));
+  gl(glAttachShader(shader_program, fragment_shader));
+  gl(glLinkProgram(shader_program));
   {
     i32 success;
     glGetProgramiv(shader_program, GL_LINK_STATUS, &success);
@@ -279,7 +320,7 @@ u32 make_program(const char *vertex_src, const char *fragment_src, b32 should_pr
     {
       char info_log[512];
       glGetProgramInfoLog(shader_program, 512, 0, info_log);
-      printf("ERROR: Shader LINK: %s\n", info_log);
+      printf("ERROR: Shader LINK (id %d): '%s'\n", shader_program, info_log);
     }
   }
   
@@ -289,8 +330,8 @@ u32 make_program(const char *vertex_src, const char *fragment_src, b32 should_pr
     pf_log("FRAGME ================\n%s\n", fragment_src);
   }
   
-  glDeleteShader(vertex_shader);
-  glDeleteShader(fragment_shader);
+  gl(glDeleteShader(vertex_shader));
+  gl(glDeleteShader(fragment_shader));
   
   return shader_program;
 }
@@ -426,7 +467,7 @@ Loaded_Image generate_blank_image(Arena *arena, u32 width, u32 height)
 
 FT_Library freetype_library;
 
-PLATFORM_LOAD_FONT(osx_freetype_load_font)
+Font_Data *osx_freetype_load_font(Arena *arena, String path)
 {
   if (freetype_library == 0) 
   {
@@ -454,8 +495,9 @@ PLATFORM_LOAD_FONT(osx_freetype_load_font)
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
   
   Font_Data *font_data = push_struct(arena, Font_Data);
-  font_data->height = (font_face->height >> 6);
-  font_data->below_base_line_height = (font_face->descender >> 6);
+  font_data->height = font_face->height >> 6;
+  font_data->below_base_line_offset = -(font_face->bbox.yMin >> 6);
+  font_data->above_base_line_offset = font_face->bbox.yMax >> 6;
   
   for (u32 char_idx = 0;
        char_idx < array_size(font_data->ascii_glyph_table);
@@ -487,11 +529,12 @@ PLATFORM_LOAD_FONT(osx_freetype_load_font)
       gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
       gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
       
+      FT_Glyph_Metrics metrics = font_face->glyph->metrics;
       Glyph_Info info = {0};
+      info.advance_x = metrics.horiAdvance >> 6;
+      info.bearing = v2i(metrics.horiBearingX >> 6, metrics.horiBearingY >> 6);
+      info.size = v2i(metrics.width >> 6, metrics.height >> 6);
       info.texture_id = texture_id;
-      info.size = v2i(font_face->glyph->bitmap.width, font_face->glyph->bitmap.rows);
-      info.bearing =  v2i(font_face->glyph->bitmap_left, font_face->glyph->bitmap_top);
-      info.advance_x = (font_face->glyph->advance.x >> 6);
       
       font_data->ascii_glyph_table[char_idx] = info;
     }
@@ -531,7 +574,8 @@ u32 make_shaderes_program(Arena *arena, String vertex_shader_path, String fragme
   return result;
 }
 
-Render_Data osx_opengl_make_renderer(Arena *arena, String vertex_shader_path, String fragment_shader_path)
+Render_Data opengl_make_renderer(Arena *arena, String vertex_shader_path, 
+                                 String fragment_shader_path, i64 *shaders_load_time)
 {
   Render_Data renderer = {0};
   
@@ -542,7 +586,7 @@ Render_Data osx_opengl_make_renderer(Arena *arena, String vertex_shader_path, St
   renderer.rects.buffer = push_array(arena, renderer.rects.capacity, Render_Rect);
   
   // NOTE(erb): shaders setup
-  renderer.program = make_shaderes_program(arena, vertex_shader_path, fragment_shader_path, false, &renderer.shaders_load_time);
+  renderer.program = make_shaderes_program(arena, vertex_shader_path, fragment_shader_path, false, shaders_load_time);
   
   // NOTE(erb): buffers setup
   gl(glGenVertexArrays(1, &renderer.vao));
@@ -552,10 +596,10 @@ Render_Data osx_opengl_make_renderer(Arena *arena, String vertex_shader_path, St
   gl(glBindBuffer(GL_ARRAY_BUFFER, renderer.vbo));
   {
     Buffer_Attribs Attribs = {0};
-    push_struct_attrib_f32(&Attribs, Render_Rect, dest_p0, V2f);
-    push_struct_attrib_f32(&Attribs, Render_Rect, dest_p1, V2f);
-    push_struct_attrib_f32(&Attribs, Render_Rect, src_p0, V2f);
-    push_struct_attrib_f32(&Attribs, Render_Rect, src_p1, V2f);
+    push_struct_attrib_f32(&Attribs, Render_Rect, dest_bottom_left, V2f);
+    push_struct_attrib_f32(&Attribs, Render_Rect, dest_top_right, V2f);
+    push_struct_attrib_f32(&Attribs, Render_Rect, src_bottom_left, V2f);
+    push_struct_attrib_f32(&Attribs, Render_Rect, src_top_right, V2f);
     push_struct_attrib_f32(&Attribs, Render_Rect, color_bottom_left, V4f);
     push_struct_attrib_f32(&Attribs, Render_Rect, color_bottom_right, V4f);
     push_struct_attrib_f32(&Attribs, Render_Rect, color_top_left, V4f);
@@ -728,10 +772,15 @@ Mouse_Code mouse_code_from_glfw(i32 button)
   return code;
 }
 
-GLFWwindow *get_glfw_window(Window *window)
+
+Input_Event *push_payload_stream_event(GLFWwindow *glfw_window)
 {
-  GLFWwindow *result = (GLFWwindow *)window->platform_handle;
-  return result;
+  GLFW_Payload *payload = (GLFW_Payload *)glfwGetWindowUserPointer(glfw_window);
+  pf_assert(payload);
+  pf_assert(payload->event_stream_count <= array_size(payload->event_stream));
+  
+  Input_Event *event = (payload->event_stream + payload->event_stream_count++);
+  return event;
 }
 
 void key_callback(GLFWwindow *glfw_window, int key, int scancode, int action, int mods) 
@@ -739,14 +788,10 @@ void key_callback(GLFWwindow *glfw_window, int key, int scancode, int action, in
   // NOTE(erb): scancode is ignored for now
   supress_unused(scancode);
   
-  GLFW_Event_Payload *payload = (GLFW_Event_Payload *)glfwGetWindowUserPointer(glfw_window);
-  pf_assert(payload);
-  
   Key_Code code = glfw_key_to_key_code(key);
-  
   if (code != KeyCode_None && (action == GLFW_PRESS || action == GLFW_RELEASE))
   {
-    Input_Event *event = sll_push_allocate(payload->arena, &payload->events, Input_Event);
+    Input_Event *event = push_payload_stream_event(glfw_window);
     if (action == GLFW_PRESS) 
     {
       event->kind = InputEventKind_KeyDown;
@@ -762,25 +807,18 @@ void key_callback(GLFWwindow *glfw_window, int key, int scancode, int action, in
 
 void character_callback(GLFWwindow* glfw_window, unsigned int codepoint)
 {
-  GLFW_Event_Payload *payload = (GLFW_Event_Payload *)glfwGetWindowUserPointer(glfw_window);
-  pf_assert(payload);
-  
-  Input_Event *event = sll_push_allocate(payload->arena, &payload->events, Input_Event);
+  Input_Event *event = push_payload_stream_event(glfw_window);
   event->kind = InputEventKind_Text;
-  event->text_code_point = codepoint;
+  event->code_point = codepoint;
 }
 
 void mouse_callback(GLFWwindow* glfw_window, int button, int action, int mods)
 {
-  GLFW_Event_Payload *payload = (GLFW_Event_Payload *)glfwGetWindowUserPointer(glfw_window);
-  pf_assert(payload);
-  
   Mouse_Code code = mouse_code_from_glfw(button);
   
   if (code != MouseCode_None)
   {
-    Input_Event *event =
-      sll_push_allocate(payload->arena, &payload->events, Input_Event);
+    Input_Event *event = push_payload_stream_event(glfw_window);
     if (action == GLFW_PRESS) 
     {
       event->kind = InputEventKind_MouseDown;
@@ -791,29 +829,27 @@ void mouse_callback(GLFWwindow* glfw_window, int button, int action, int mods)
     }
     event->mouse.code = code;
     event->mouse.modifiers = modifiers_from_glfw_mods(mods);
-    
   }
 }
 
 void mouse_scroll_callback(GLFWwindow* glfw_window, double xoffset, double yoffset)
 {
-  GLFW_Event_Payload *payload = (GLFW_Event_Payload *)glfwGetWindowUserPointer(glfw_window);
-  pf_assert(payload);
-  
-  Input_Event *event = sll_push_allocate(payload->arena, &payload->events, Input_Event);
+  Input_Event *event = push_payload_stream_event(glfw_window);
   event->kind = InputEventKind_MouseWheel;
   event->wheel_delta = v2f((f32)xoffset, (f32)yoffset);
 };
 
 void cursor_position_callback(GLFWwindow* glfw_window, double xpos, double ypos)
 {
-  GLFW_Event_Payload *payload = (GLFW_Event_Payload *)glfwGetWindowUserPointer(glfw_window);
-  
-  Input_Event *event = sll_push_allocate(payload->arena, &payload->events, Input_Event);
-  
+  Input_Event *event = push_payload_stream_event(glfw_window);
   event->kind = InputEventKind_CursorMove;
   event->cursor_position = v2f((f32)xpos, (f32)ypos);
 };
+
+void glfw_error_callback(int error_code, const char* description)
+{
+  pf_log("GLFW ERROR (%d): '%s'\n", error_code, description);
+}
 
 V2i glfw_frame_buffer_size(GLFWwindow *window)
 {
@@ -839,62 +875,72 @@ V2f glfw_cursor_position(GLFWwindow *window)
   return result;
 }
 
-Window *osx_glfw_make_window(Arena *arena, String title, V2i size)
+void osx_glfw_init_window(OSX_Window *window, String title, V2i size)
 {
-  Window *window = 0;
-  
-  verify_key_codes_with_glfw_keys();
-  
-  if (glfwInit()) 
+  if (glfwInit())
   {
+    verify_key_codes_with_glfw_keys();
+    
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE); // NOTE(erb): apple forward compatibilty
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     
+    glfwSetErrorCallback(glfw_error_callback);
+    
+    // NOTE(erb): glfw_info
+    pf_log("LOG: GLFW Compilation Version %i.%i.%i\n", 
+           GLFW_VERSION_MAJOR, GLFW_VERSION_MINOR, GLFW_VERSION_REVISION);
+    i32 major, minor, revision;
+    glfwGetVersion(&major, &minor, &revision);
+    printf("LOG: GLFW Runtime Version %i.%i.%i\n", major, minor, revision);
+    
     GLFWwindow* glfw_window = glfwCreateWindow(size.x, size.y, str_to_temp256_cstr(title), 0, 0);
     if (glfw_window) 
     {
-      window = push_struct(arena, Window);
-      window->platform_handle = (void *)glfw_window;
-      window->input.screen_space_size.end = glfw_window_size(glfw_window);
-      window->input.frame_buffer_size.end = glfw_frame_buffer_size(glfw_window);
-      window->input.cursor_reverse_y.end = glfw_cursor_position(glfw_window);
-      
-      glfwMakeContextCurrent(glfw_window);
-      
-      glfwSwapInterval(0); // NOTE(erb): no vsync
-      
-      // NOTE(erb): callbacks
-      glfwSetKeyCallback(glfw_window, key_callback);
-      glfwSetCharCallback(glfw_window, character_callback);
-      glfwSetMouseButtonCallback(glfw_window, mouse_callback);
-      glfwSetCursorPosCallback(glfw_window, cursor_position_callback);
-      glfwSetScrollCallback(glfw_window, mouse_scroll_callback);
-      
-      
-      // NOTE(erb): opengl info
-      printf("LOG: OpenGL version: %s\n", glGetString(GL_VERSION));
-      printf("LOG: OpenGL Vendor: %s\n", glGetString(GL_VENDOR));
-      printf("LOG: OpenGL Renderer: %s\n", glGetString(GL_RENDERER));
-      printf("LOG: OpenGL Version: %s\n", glGetString(GL_VERSION));
-      printf("LOG: OpenGL GLSL Version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
-      i32 max_vertex_attribs;
-      gl(glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &max_vertex_attribs));
-      printf("LOG: OpenGL max vertex_shader Attributes Allowed: %d\n", max_vertex_attribs);
-      
-      // NOTE(erb): opengl setup
-      gl(glEnable(GL_BLEND));
-      gl(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+      glfw_context(glfw_window)
+      {
+        glfwSwapInterval(0); // NOTE(erb): no vsync
+        
+        is_opengl_initialized = true;
+        // NOTE(erb): opengl info
+        pf_log("LOG: OpenGL version: %s\n", glGetString(GL_VERSION));
+        pf_log("LOG: OpenGL Vendor: %s\n", glGetString(GL_VENDOR));
+        pf_log("LOG: OpenGL Renderer: %s\n", glGetString(GL_RENDERER));
+        pf_log("LOG: OpenGL Version: %s\n", glGetString(GL_VERSION));
+        pf_log("LOG: OpenGL GLSL Version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
+        i32 max_vertex_attribs;
+        gl(glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &max_vertex_attribs));
+        pf_log("LOG: OpenGL max vertex_shader Attributes Allowed: %d\n", max_vertex_attribs);
+        
+        window->glfw = (void *)glfw_window;
+        window->input.screen_space_size.end = glfw_window_size(glfw_window);
+        window->input.frame_buffer_size.end = glfw_frame_buffer_size(glfw_window);
+        window->input.cursor_reverse_y.end = glfw_cursor_position(glfw_window);
+        
+        // NOTE(erb): callbacks
+        glfwSetKeyCallback(glfw_window, key_callback);
+        glfwSetCharCallback(glfw_window, character_callback);
+        glfwSetMouseButtonCallback(glfw_window, mouse_callback);
+        glfwSetCursorPosCallback(glfw_window, cursor_position_callback);
+        glfwSetScrollCallback(glfw_window, mouse_scroll_callback);
+        
+        // NOTE(erb): opengl setup
+        gl(glEnable(GL_BLEND));
+        gl(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+      }
     }
   }
-  
-  return window;
+  else
+  {
+    pf_log("Failed to initialized glfw");
+    pf_assert(false);
+  }
 }
 
-void close_glfw_window(Window *window)
+void close_glfw_window(OSX_Window *window)
 {
-  glfwDestroyWindow(get_glfw_window(window));
+  glfwDestroyWindow(window->glfw);
 }
 
 u64 cycle_counter()
@@ -904,13 +950,31 @@ u64 cycle_counter()
   return val;
 }
 
+u64 osx_timer_ns()
+{
+  mach_timebase_info_data_t info;
+  kern_return_t kern_result = mach_timebase_info(&info);
+  pf_assert(kern_result == KERN_SUCCESS);
+  
+  u64 raw = mach_absolute_time();
+  u64 nanos = raw * info.numer / info.denom;
+  
+#if 0
+  struct timespec get_time_s;
+  clock_gettime(CLOCK_UPTIME_RAW, &get_time_s);
+  
+  u64 get_time_ns = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+#endif
+  
+  u64 result = nanos;
+  return result;
+}
+
 UPDATE_AND_RENDER(update_and_render_stub) 
 {
   // NOTE(erb): empty
   supress_unused(memory);
-  supress_unused(input);
-  supress_unused(renderer);
-  supress_unused(default_font);
+  supress_unused(frame_debug_counters);
   supress_unused(exec_directory);
   
   App_Update_Result result = {0};
@@ -1046,12 +1110,19 @@ Input_V2f v2f_input_add_end(Input_V2f current, V2f new_end)
   return result;
 }
 
-void set_input_from_event_list(Input_Event_List event_list, Input_State *input)
+void update_input_from_glfw_event_stream(GLFW_Payload *payload, Input_State *input)
 {
-  for (Input_Event *event = event_list.first;
-       event;
-       event = event->next) 
+  for (u32 event_idx = 0;
+       event_idx < payload->event_stream_count;
+       event_idx++) 
   {
+    Input_Event *event = (payload->event_stream + event_idx);
+    
+    pf_assert(input->event_stream_count <= array_size(input->event_stream));
+    Input_Event *event_copy = (input->event_stream + input->event_stream_count++);
+    *event_copy = *event;
+    event_copy->next = 0;
+    
     switch (event->kind)
     {
       case InputEventKind_None: pf_assert(false && "Got a InputEventKind_None");
@@ -1077,6 +1148,7 @@ void set_input_from_event_list(Input_Event_List event_list, Input_State *input)
         Input_Button *key = (input->keys + event->key.code);
         key->half_transition_count++;
         key->ended_down = (event->kind == InputEventKind_KeyDown);
+        input->modifiers = event->key.modifiers;
       } break;
       
       case InputEventKind_MouseDown:
@@ -1085,6 +1157,7 @@ void set_input_from_event_list(Input_Event_List event_list, Input_State *input)
         Input_Button *button = (input->mouse_buttons + event->mouse.code);
         button->half_transition_count++;
         button->ended_down = (event->kind == InputEventKind_MouseDown);
+        input->modifiers = event->key.modifiers;
       } break;
       
       case InputEventKind_CursorMove:
@@ -1101,291 +1174,447 @@ void set_input_from_event_list(Input_Event_List event_list, Input_State *input)
   }
 }
 
-Input_Event_List glfw_window_poll_events(Arena *arena, GLFWwindow *glfw_window)
-{
-  GLFW_Event_Payload payload = {0};
-  payload.arena = 0;
-  
-  payload.arena = arena;
-  glfwSetWindowUserPointer(glfw_window, &payload);
-  {
-    glfwMakeContextCurrent(glfw_window);
-    glfwPollEvents();
-  }
-  glfwSetWindowUserPointer(glfw_window, 0);
-  
-  if (glfwWindowShouldClose(glfw_window)) 
-  {
-    Input_Event *event = sll_push_allocate(payload.arena, &payload.events, Input_Event);;
-    event->kind = InputEventKind_WindowClose;
-  }
-  
-  {
-    Input_Event *event = sll_push_allocate(payload.arena, &payload.events, Input_Event);;
-    event->kind = InputEventKind_WindowResize;
-    event->window_resize.screen_space = glfw_window_size(glfw_window);
-    event->window_resize.frame_buffer = glfw_frame_buffer_size(glfw_window);
-  }
-  
-  {
-    Input_Event *event = sll_push_allocate(payload.arena, &payload.events, Input_Event);;
-    event->kind = InputEventKind_CursorMove;
-    event->cursor_position = glfw_cursor_position(glfw_window);
-  }
-  
-  return payload.events;
-}
-
 void begin_event_record(OSX_State *state)
 {
-  pf_log("Started Recording (%.*s)\n", str_expand(state->file_path));
-  state->kind = OSXStateKind_Recording;
-  state->file_fd = open(str_to_temp512_cstr(state->file_path), O_CREAT|O_TRUNC|O_WRONLY, S_IRWXU);
-  pf_assert(state->file_fd != -1);
+  pf_log("Started Recording (%.*s)\n", str_expand(state->input_file_path));
+  state->kind = DebugState_Recording;
+  state->input_file_fd = open(str_to_temp512_cstr(state->input_file_path), O_CREAT|O_TRUNC|O_WRONLY, S_IRWXU);
+  pf_assert(state->input_file_fd != -1);
 }
 
 void end_event_record(OSX_State *state)
 {
-  pf_log("Ended Recording (%.*s)\n", str_expand(state->file_path));
-  state->kind = OSXStateKind_None;
-  i32 result = close(state->file_fd);
-  state->file_fd = -1;
+  pf_log("Ended Recording (%.*s)\n", str_expand(state->input_file_path));
+  state->kind = DebugState_None;
+  i32 result = close(state->input_file_fd);
+  state->input_file_fd = -1;
   pf_assert(result != -1);
 }
 
 void begin_event_play_back(OSX_State *state)
 {
-  pf_log("Started Playback (%.*s)\n", str_expand(state->file_path));
-  state->kind = OSXStateKind_Playing;
-  state->file_fd = open(str_to_temp512_cstr(state->file_path), O_RDONLY);
-  pf_assert(state->file_fd != -1);
+  pf_log("Started Playback (%.*s)\n", str_expand(state->input_file_path));
+  state->kind = DebugState_Playing;
+  state->input_file_fd = open(str_to_temp512_cstr(state->input_file_path), O_RDONLY);
+  pf_assert(state->input_file_fd != -1);
 }
 
 void end_event_play_back(OSX_State *state)
 {
-  pf_log("Ended Playback (%.*s)\n", str_expand(state->file_path));
-  state->kind = OSXStateKind_None;
-  i32 result = close(state->file_fd);
-  state->file_fd = -1;
+  pf_log("Ended Playback (%.*s)\n", str_expand(state->input_file_path));
+  state->kind = DebugState_None;
+  i32 result = close(state->input_file_fd);
+  state->input_file_fd = -1;
   pf_assert(result != -1);
 }
 
 void read_input_play_back(OSX_State *state, Input_State *input)
 {
-  i64 bytes_read = read(state->file_fd, (void *)input, sizeof(Input_State));
+  i64 bytes_read = read(state->input_file_fd, (void *)input, sizeof(Input_State));
   pf_assert(bytes_read == 0 || bytes_read == sizeof(Input_State));
   
   if(bytes_read == 0)
   {
-    lseek(state->file_fd, 0, SEEK_SET);
+    lseek(state->input_file_fd, 0, SEEK_SET);
   }
 }
 
 void write_input_recording(OSX_State *state, Input_State *input)
 {
-  i64 bytes_written = write(state->file_fd, (void *)input, sizeof(Input_State));
+  i64 bytes_written = write(state->input_file_fd, (void *)input, sizeof(Input_State));
   pf_assert(bytes_written == sizeof(Input_State));
 }
 
-void osx_frame_begin(Arena *arena, OSX_State *state, Window *window, Render_Data *renderer)
+
+void clear_input(Input_State *input)
 {
-  // NOTE(erb): input handling
+  // NOTE(erb): clear input transitions/delta
+  input->event_stream_count = 0;
+  mem_zero((u8 *)input->event_stream, array_size(input->event_stream)*sizeof(Input_Event));
+  input->screen_space_size.delta = v2ii(0);
+  input->frame_buffer_size.delta = v2ii(0);
+  input->cursor_reverse_y.delta = v2ff(0);
+  input->scroll_offset = v2ff(0);
+  
+  for (u32 key_idx = 0;
+       key_idx < array_size(input->keys);
+       key_idx++)
   {
-    // NOTE(erb): clear input transitions/delta
-    Input_State *input = &window->input;
-    {
-      input->screen_space_size.delta = v2ii(0);
-      input->frame_buffer_size.delta = v2ii(0);
-      input->cursor_reverse_y.delta = v2ff(0);
-      input->scroll_offset = v2ff(0);
-      
-      input->modifiers = ModifierFlags_None;
-      
-      for (u32 key_idx = 0;
-           key_idx < array_size(input->keys);
-           key_idx++)
-      {
-        input->keys[key_idx].half_transition_count = 0;
-      }
-      
-      for (u32 button_idx = 0;
-           button_idx < array_size(input->mouse_buttons);
-           button_idx++)
-      {
-        input->mouse_buttons[button_idx].half_transition_count = 0;
-      }
-    }
-    
-    
-    // NOTE(erb): poll and handle glfw events
-    Input_State glfw_input = {0};
-    {
-      mem_copy((u8 *)input, (u8 *)&glfw_input, sizeof(Input_State));
-      Input_Event_List events = glfw_window_poll_events(arena, get_glfw_window(window));
-      set_input_from_event_list(events, &glfw_input);
-      
-      // NOTE(erb): input handling
-      if (key_pressed(&glfw_input, KeyCode_L))
-      {
-        switch (state->kind) 
-        {
-          case OSXStateKind_None: begin_event_record(state); break;
-          case OSXStateKind_Recording: end_event_record(state); break;
-          case OSXStateKind_Playing: break;
-        }
-      }
-      else if (key_pressed(&glfw_input, KeyCode_U))
-      {
-        switch (state->kind) 
-        {
-          case OSXStateKind_Recording: break;
-          case OSXStateKind_None: begin_event_play_back(state); break;
-          case OSXStateKind_Playing: end_event_play_back(state); break;
-        }
-      }
-    }
-    
-    if (state->kind == OSXStateKind_Playing)
-    {
-      read_input_play_back(state, input);
-    }
-    else
-    {
-      mem_copy((u8 *)&glfw_input, (u8 *)input, sizeof(Input_State));
-      
-    }
-    
-    if (input->screen_space_size.delta.x == 0 &&
-        input->screen_space_size.delta.y == 0)
-    {
-      input->cursor_reverse_y.delta = v2ff(0);
-    }
-    
-    if (state->kind == OSXStateKind_Recording)
-    {
-      write_input_recording(state, &window->input);
-    }
+    input->keys[key_idx].half_transition_count = 0;
   }
   
-  
-  // NOTE(erb): claear renderer
+  for (u32 button_idx = 0;
+       button_idx < array_size(input->mouse_buttons);
+       button_idx++)
   {
-    renderer->rects.count = 0;
-    renderer->batch_count = 1;
-    renderer->batches->start_rect_index = 0;
-    renderer->batches->texture_count = 0;
-    
-    V2f viewport = v2fi(window->input.frame_buffer_size.end);
-    gl(glViewport(0, 0, viewport.x, viewport.y));
-    gl(glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT));
+    input->mouse_buttons[button_idx].half_transition_count = 0;
   }
 }
 
-void osx_frame_end(Render_Data *renderer, Window *window)
+void osx_frame_begin(OSX_State *state)
 {
-  // NOTE(erb): resolution
-  // TODO(erb): change this to actual monitor resolution
-  V2f resolution = v2fi(window->input.screen_space_size.end);
-  gl(glUseProgram(renderer->program));
-  gl(glUniform2f(glGetUniformLocation(renderer->program, "u_resolution"), resolution.x, resolution.y));
   
-  // NOTE(erb): batches
-  for (u32 batch_idx = 0;
-       batch_idx < renderer->batch_count;
-       batch_idx++)
+  for (OSX_Window *window = state->first;
+       window;
+       window = window->next)
   {
-    Render_Batch *batch = (renderer->batches + batch_idx);
-    u32 end_rect_idx = renderer->rects.count;
-    if (batch_idx < renderer->batch_count - 1)
+    // NOTE(erb): set the user pointer again
+    glfwSetWindowUserPointer(window->glfw, &window->glfw_payload);
+    
+  }
+  
+  // NOTE(erb): poll all window events
+  glfwPollEvents();
+  
+  for (OSX_Window *window = state->first;
+       window;
+       window = window->next)
+  {
+    // NOTE(erb): collect glfw events
     {
-      end_rect_idx = renderer->batches[batch_idx+1].start_rect_index;
+      V2i old_screen_space = window->input.screen_space_size.end;
+      V2i old_frame_buffer = window->input.frame_buffer_size.end;
+      V2i new_screen_space = glfw_window_size(window->glfw);
+      V2i new_frame_buffer = glfw_frame_buffer_size(window->glfw);
+      
+      if (!v2i_equals(old_screen_space, new_screen_space) || 
+          !v2i_equals(old_frame_buffer, new_frame_buffer))
+      {
+        Input_Event *event = push_payload_stream_event(window->glfw);
+        event->kind = InputEventKind_WindowResize;
+        event->window_resize.screen_space = new_screen_space;
+        event->window_resize.frame_buffer = new_frame_buffer;
+      }
+      
+      if (glfwWindowShouldClose(window->glfw)) 
+      {
+        Input_Event *event = push_payload_stream_event(window->glfw);
+        event->kind = InputEventKind_WindowClose;
+      }
     }
     
-    u32 rect_count = end_rect_idx - batch->start_rect_index;
-    Render_Rect *rects_begin = renderer->rects.buffer + batch->start_rect_index;
+    // NOTE(erb): clear past frame window events
+    clear_input(&window->input);
     
-    // NOTE(erb): bind buffer
-    gl(glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo));
-    gl(glBufferData(GL_ARRAY_BUFFER, sizeof(Render_Rect)*rect_count, rects_begin, GL_STREAM_DRAW));
+    // NOTE(erb): update events
+    update_input_from_glfw_event_stream(&window->glfw_payload, &window->input);
+    window->glfw_payload.event_stream_count = 0;
     
-    // NOTE(erb): texture slots
-    for (u32 texture_idx = 0;
-         texture_idx < batch->texture_count;
-         texture_idx++) 
+    // NOTE(erb): clear renderer
+    Render_Data *renderer = &window->renderer;
     {
-      u32 tex = batch->textures[texture_idx];
-      gl(glActiveTexture(GL_TEXTURE0 + texture_idx));
-      gl(glBindTexture(GL_TEXTURE_2D, tex));
-    }
-    
-    u32 textures[16] = { 
-      0, 1, 2, 3, 
-      4, 5, 6, 7,
-      8, 9, 10, 11, 
-      12, 13, 14, 15,
-    };
-    gl(glUseProgram(renderer->program));
-    gl(glUniform1iv(glGetUniformLocation(renderer->program, "u_textures"), batch->texture_count, (GLint *)textures));
-    
-    // NOTE(erb): 
-    gl(glEnable(GL_BLEND));
-    gl(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
-    
-    // NOTE(erb): draw
-    {
-      gl(glBindVertexArray(renderer->vao));
-      gl(glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, rect_count));
-    }
-    
-    // NOTE(erb): unbind stuff
-    {
-      gl(glBindVertexArray(0));
-      gl(glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo));
-      gl(glBufferData(GL_ARRAY_BUFFER, sizeof(Render_Rect)*rect_count, 0, GL_STREAM_DRAW));
+      renderer->screen_size = window->input.screen_space_size.end;
+      renderer->frame_buffer_size = window->input.frame_buffer_size.end;
+      
+      renderer->rects.count = 0;
+      renderer->batch_count = 1;
+      renderer->batches->start_rect_index = 0;
+      renderer->batches->texture_count = 0;
     }
   }
   
-  glfwSwapBuffers(get_glfw_window(window));
+#if 0
+  // TODO(erb): fix input streaming
+  // the issue is that since there is more than one window, we don't know which input corresponds to which window.
+  // and since there can be more than one window, reading is variable length
+  // 
+  // A possible simple solution is to just stream inputs per window (one file per window), 
+  // and hash inputs with either window id or window title
+  
+  Input_State glfw_input = window->input;
+  update_input_from_glfw_event_stream(&window->payload, &glfw_input);
+  
+  b32 pressed_record_key = false;
+  b32 pressed_play_key = false;
+  
+  pressed_record_key = (pressed_record_key || 
+                        key_pressed_modded(&glfw_input, KeyCode_L, ModifierFlags_Control));
+  pressed_play_key = (pressed_play_key || 
+                      key_pressed_modded(&glfw_input, KeyCode_U, ModifierFlags_Control));
+  
+  if (pressed_record_key)
+  {
+    switch (state->kind) 
+    {
+      case DebugState_None: begin_event_record(state); break;
+      case DebugState_Recording: end_event_record(state); break;
+      case DebugState_Playing: break;
+    }
+  }
+  else if (pressed_play_key)
+  {
+    switch (state->kind) 
+    {
+      case DebugState_Recording: break;
+      case DebugState_None: begin_event_play_back(state); break;
+      case DebugState_Playing: end_event_play_back(state); break;
+    }
+  }
+  
+  if (state->kind == DebugState_Playing)
+  {
+    read_input_play_back(state, input);
+  }
+  else
+  {
+    *input = glfw_input;
+  }
+  
+  if (state->kind == DebugState_Recording)
+  {
+    write_input_recording(state, &window->input);
+  }
+#endif
+  
+}
+
+void osx_frame_end(OSX_State *state)
+{
+  for (OSX_Window *window = state->first;
+       window;
+       window = window->next)
+  {
+    glfw_context(window->glfw)
+    {
+      Render_Data *renderer = &window->renderer;
+      renderer->frame_buffer_size = window->input.frame_buffer_size.end;
+      renderer->frame_buffer_size = window->input.frame_buffer_size.end;
+      renderer->screen_size =  window->input.screen_space_size.end;
+      
+      gl(glViewport(0, 0, (f32)renderer->frame_buffer_size.x, (f32)renderer->frame_buffer_size.y));
+      gl(glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT));
+      
+      // NOTE(erb): resolution
+      // TODO(erb): change this to actual monitor resolution
+      gl(glUseProgram(renderer->program));
+      gl(glUniform2f(glGetUniformLocation(renderer->program, "u_resolution"), 
+                     renderer->screen_size.x, 
+                     renderer->screen_size.y));
+      
+      // NOTE(erb): batches
+      for (u32 batch_idx = 0;
+           batch_idx < renderer->batch_count;
+           batch_idx++)
+      {
+        Render_Batch *batch = (renderer->batches + batch_idx);
+        u32 end_rect_idx = renderer->rects.count;
+        if (batch_idx < renderer->batch_count - 1)
+        {
+          end_rect_idx = renderer->batches[batch_idx+1].start_rect_index;
+        }
+        
+        u32 rect_count = end_rect_idx - batch->start_rect_index;
+        Render_Rect *rects_begin = renderer->rects.buffer + batch->start_rect_index;
+        
+        // NOTE(erb): bind buffer
+        gl(glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo));
+        gl(glBufferData(GL_ARRAY_BUFFER, sizeof(Render_Rect)*rect_count, rects_begin, GL_STREAM_DRAW));
+        
+        // NOTE(erb): texture slots
+        for (u32 texture_idx = 0;
+             texture_idx < batch->texture_count;
+             texture_idx++) 
+        {
+          u32 tex = batch->textures[texture_idx];
+          gl(glActiveTexture(GL_TEXTURE0 + texture_idx));
+          gl(glBindTexture(GL_TEXTURE_2D, tex));
+        }
+        
+        u32 textures[16] = { 
+          0, 1, 2, 3, 
+          4, 5, 6, 7,
+          8, 9, 10, 11, 
+          12, 13, 14, 15,
+        };
+        gl(glUseProgram(renderer->program));
+        gl(glUniform1iv(glGetUniformLocation(renderer->program, "u_textures"), batch->texture_count, (GLint *)textures));
+        
+        // NOTE(erb): 
+        gl(glEnable(GL_BLEND));
+        gl(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+        
+        // NOTE(erb): draw
+        {
+          gl(glBindVertexArray(renderer->vao));
+          gl(glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, rect_count));
+        }
+        
+        // NOTE(erb): unbind stuff
+        {
+          gl(glBindVertexArray(0));
+          gl(glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo));
+          gl(glBufferData(GL_ARRAY_BUFFER, sizeof(Render_Rect)*rect_count, 0, GL_STREAM_DRAW));
+        }
+      }
+      
+      glfwSwapBuffers(window->glfw);
+    }
+  }
+}
+
+void osx_attach_renderer(OSX_State *state, OSX_Window *window)
+{
+  glfw_context(window->glfw)
+  {
+    window->renderer = opengl_make_renderer(&state->permanent_arena, 
+                                            state->vertex_shader_path, 
+                                            state->fragment_shader_path, 
+                                            &state->shaders_load_time);
+  }
+}
+
+void osx_attach_font(OSX_State *state, OSX_Window *window)
+{
+  glfw_context(window->glfw)
+  {
+    window->default_font = osx_freetype_load_font(&state->permanent_arena, state->default_font_path);
+  }
+}
+
+OSX_State *g_state;
+
+PLATFORM_MAKE_WINDOW(osx_make_window)
+{
+  // NOTE(erb): allocation
+  OSX_Window *window = 0;
+  {
+    if (g_state->first_free != 0) 
+    {
+      window = g_state->first_free;
+      g_state->first_free = window->next;
+    }
+    else
+    {
+      window = push_struct(&g_state->permanent_arena, OSX_Window);
+    }
+    window->next = g_state->first;
+    g_state->first = window;
+  }
+  pf_assert(window);
+  
+  // NOTE(erb): initialization
+  {
+    osx_glfw_init_window(window, title, size);
+    osx_attach_renderer(g_state, window);
+    osx_attach_font(g_state, window);
+  }
+  
+  // NOTE(erb): id assignment
+  g_state->next_window_id = cap_bottom(g_state->next_window_id, 1);
+  window->id = g_state->next_window_id++;
+  
+  // NOTE(erb): table insertion
+  i32 hash_idx = window->id % array_size(g_state->window_table);
+  OSX_Window **hash_slot = (g_state->window_table + hash_idx);
+  if (*hash_slot != 0)
+  {
+    window->hash_next = (*hash_slot);
+  }
+  *hash_slot = window;
+  
+  return window->id;
+}
+
+OSX_Window *get_window_from_id(OSX_State *state, Window_ID id)
+{
+  OSX_Window *result = 0;
+  if (id != 0)
+  {
+    i32 hash_idx = id % array_size(state->window_table);
+    OSX_Window **hash_slot = (g_state->window_table + hash_idx);
+    if (*hash_slot != 0)
+    {
+      for (OSX_Window *test_window = *hash_slot;
+           test_window;
+           test_window = test_window->next)
+      {
+        if (test_window->id == id) 
+        {
+          result = test_window;
+          break;
+        }
+      }
+    }
+  }
+  pf_assert(result);
+  return result;
+}
+
+PLATFORM_GET_WINDOW_EVENTS(osx_get_window_events)
+{
+  OSX_Window *window = get_window_from_id(g_state, handle);
+  Input_State *input = &window->input;
+  return input;
+}
+
+PLATFORM_GET_RENDERER_BUFFER(osx_get_renderer_buffer)
+{
+  OSX_Window *window = get_window_from_id(g_state, handle);
+  Render_Data *renderer = &window->renderer;
+  return renderer;
+}
+
+PLATFORM_GET_DEFAULT_FONT(osx_get_default_font)
+{
+  OSX_Window *window = get_window_from_id(g_state, handle);
+  Font_Data *font = window->default_font;
+  return font;
+}
+
+PLATFORM_GET_CLIPBOARD_STRING(osx_get_clipboard_str)
+{
+  OSX_Window *window = get_window_from_id(g_state, handle);
+  const char* cstr = glfwGetClipboardString(window->glfw);
+  String result = push_cstr_copy(arena, (char *)cstr);
+  return result;
+}
+
+PLATFORM_SET_CLIPBOARD_STRING(osx_set_clipboard_str)
+{
+  OSX_Window *window = get_window_from_id(g_state, handle);
+  char *cstr = str_to_temp512_cstr(str);
+  glfwSetClipboardString(window->glfw, cstr);	
 }
 
 int main(void)
 {
-  // NOTE(erb): platform arena 
-  Arena platform_permanent_arena = {0};
-  Arena platform_transient_arena = {0};
+  OSX_State osx_state = {0};
+  g_state = &osx_state;
+  
+  // NOTE(erb): platform arenas 
   {
     u64 permanent_arena_size = mb(64);
     void *permanent_arena_memory = osx_allocate(permanent_arena_size);
-    arena_init(&platform_permanent_arena, permanent_arena_memory, permanent_arena_size);
+    arena_init(&osx_state.permanent_arena, permanent_arena_memory, permanent_arena_size);
     
     u64 transient_arena_size = mb(128);
     void *transient_arena_memory = osx_allocate(transient_arena_size);
-    arena_init(&platform_transient_arena, transient_arena_memory, transient_arena_size);
+    arena_init(&osx_state.transient_arena, transient_arena_memory, transient_arena_size);
   }
   
   // NOTE(erb): executable directory
-  String exec_directory = osx_get_executable_directory(&platform_permanent_arena);
+  String exec_directory = osx_get_executable_directory(&osx_state.permanent_arena);
   
   // NOTE(erb): paths setup
-  String library_path = str_concat(&platform_permanent_arena, exec_directory, S("/app.dylib"));
-  String temp_library_path = str_concat(&platform_permanent_arena, exec_directory, S("/temp_app.dylib"));
-  String font_path = str_concat(&platform_permanent_arena, exec_directory, S("/calibri.ttf"));
-  String vertex_shader_path = str_concat(&platform_permanent_arena, exec_directory, S("/vertex_shader_rect.glsl"));
-  String fragment_shader_path = str_concat(&platform_permanent_arena, exec_directory, S("/fragment_shader_rect.glsl"));
-  
-  OSX_State osx_state = {0};
-  osx_state.file_path = str_concat(&platform_permanent_arena, exec_directory, S("/input_record.dump"));
-  osx_state.file_fd = -1;
+  osx_state.vertex_shader_path = str_concat(&osx_state.permanent_arena, exec_directory, S("/vertex_shader_rect.glsl"));
+  osx_state.fragment_shader_path = str_concat(&osx_state.permanent_arena, exec_directory, S("/fragment_shader_rect.glsl"));
+  osx_state.input_file_path = str_concat(&osx_state.permanent_arena, exec_directory, S("/input_record.dump"));
+  osx_state.input_file_fd = -1;
+  osx_state.default_font_path = str_concat(&osx_state.permanent_arena, exec_directory, S("/calibri.ttf"));
+  String library_path = str_concat(&osx_state.permanent_arena, exec_directory, S("/app.dylib"));
+  String temp_library_path = str_concat(&osx_state.permanent_arena, exec_directory, S("/temp_app.dylib"));
   
   // NOTE(erb): first app dll load
   OSX_App_Library app_library = osx_load_app_library(library_path, temp_library_path);
   
   // NOTE(erb): platform functions
   {
-    g_platform.allocate = osx_allocate;
-    g_platform.free = osx_free;
-    g_platform.get_today = osx_get_today;
-    //g_platform.load_font = osx_freetype_load_font;
+    g_platform.get_clipboard_str = osx_get_clipboard_str;
+    g_platform.set_clipboard_str = osx_set_clipboard_str;
+    g_platform.make_window = osx_make_window;
+    g_platform.get_window_events = osx_get_window_events;
+    g_platform.get_renderer_buffer = osx_get_renderer_buffer;
+    g_platform.get_default_font = osx_get_default_font;
   }
   
   // NOTE(erb): application memory setup
@@ -1400,44 +1629,39 @@ int main(void)
     memory.platform = g_platform;
   }
   
-  Window *window = 0;
-  Render_Data renderer = {0};
-  Font_Data *default_font = 0;
-  {
-    window = osx_glfw_make_window(&platform_permanent_arena, S("Window"), v2i(600, 900));
-    pf_assert(window != 0);
-    renderer = osx_opengl_make_renderer(&platform_permanent_arena, vertex_shader_path, fragment_shader_path);
-    default_font = osx_freetype_load_font(&platform_permanent_arena, font_path);
-    pf_assert(default_font != 0);
-  }
+  Debug_Counters debug_counters = {0};
+  
+  f64 fps_goal = 240.0;
+  f64 frame_time_goal_ns = 10e9/fps_goal;
   
   for (;;)
   {
-    f32 frame_begin = glfwGetTime();
+    High_Freq_Time frame_start_time = high_freq_time_from_ns(osx_timer_ns());
+    
+    Debug_Counters start_counters = {0};
+    {
+      
+      struct rusage usage;
+      i32 result = getrusage(RUSAGE_SELF, &usage);
+      pf_assert(result == 0);
+      
+      start_counters.frame_time_ns = osx_timer_ns();
+      start_counters.cycles = cycle_counter();
+      start_counters.page_reclaims = usage.ru_minflt;
+      start_counters.page_faults = usage.ru_majflt;
+      start_counters.swaps = usage.ru_nswap;
+      start_counters.fs_input = usage.ru_inblock;
+      start_counters.fs_output = usage.ru_oublock;
+    }
     
     App_Update_Result update_result = {0};
     
-    // NOTE(erb): frame step
     {
-      osx_frame_begin(&platform_transient_arena, &osx_state, window, &renderer);
-      
-      if (osx_state.kind == OSXStateKind_Playing)
-      {
-        f32 t = sinf(frame_begin*5)*0.5f + 0.5f;
-        render_rect(&renderer, v4f_point_add(v2f(0, 0), v2f(50, 50)), with_alpha(color_green, t));
-      }
-      if (osx_state.kind == OSXStateKind_Recording)
-      {
-        f32 t = sinf(frame_begin*10)*0.5f + 0.5f;
-        render_rect(&renderer, v4f_point_add(v2f(50, 0), v2f(50, 50)), with_alpha(color_red, t));
-      }
-      
+      osx_frame_begin(&osx_state);
       update_result = app_library.update_and_render(&memory, 
-                                                    &window->input, 
-                                                    &renderer, 
-                                                    default_font, 
-                                                    exec_directory);
-      osx_frame_end(&renderer, window);
+                                                    exec_directory,
+                                                    debug_counters);
+      osx_frame_end(&osx_state);
     }
     
     // NOTE(erb): hot reloading
@@ -1447,19 +1671,49 @@ int main(void)
         osx_unload_app_library(&app_library);
         app_library = osx_load_app_library(library_path, temp_library_path);
       }
-      if (osx_has_file_changed(vertex_shader_path, renderer.shaders_load_time) ||
-          
-          osx_has_file_changed(fragment_shader_path, renderer.shaders_load_time))
+      
+      if (osx_has_file_changed(osx_state.vertex_shader_path, osx_state.shaders_load_time) ||
+          osx_has_file_changed(osx_state.fragment_shader_path, osx_state.shaders_load_time))
       {
-        renderer.program = make_shaderes_program(&platform_transient_arena, 
-                                                 vertex_shader_path, 
-                                                 fragment_shader_path, 
-                                                 false, 
-                                                 &renderer.shaders_load_time);
+        for (OSX_Window *window = osx_state.first;
+             window;
+             window = window->next)
+        {
+          window->renderer.program = make_shaderes_program(&osx_state.transient_arena, 
+                                                           osx_state.vertex_shader_path, 
+                                                           osx_state.fragment_shader_path, 
+                                                           false, 
+                                                           &osx_state.shaders_load_time);
+        }
       }
     }
     
-    arena_release(&platform_transient_arena);
+    arena_release(&osx_state.transient_arena);
+    
+    High_Freq_Time frame_end_time = high_freq_time_from_ns(osx_timer_ns());
+    f64 frame_time_left_ns = frame_time_goal_ns - (frame_end_time.ns - frame_start_time.ns);
+    if(frame_time_left_ns > 0.0f)
+    {
+      High_Freq_Time frame_time_left = high_freq_time_from_ns(frame_time_left_ns);
+      struct timespec tp;
+      tp.tv_sec = (u64)frame_time_left.s;
+      tp.tv_nsec = frame_time_left.ns % (u64)1000000000;
+      nanosleep(&tp, 0);
+    }
+    
+    {
+      struct rusage usage;
+      i32 result = getrusage(RUSAGE_SELF, &usage);
+      pf_assert(result == 0);
+      
+      debug_counters.frame_time_ns = osx_timer_ns() - start_counters.frame_time_ns;
+      debug_counters.cycles = cycle_counter() - start_counters.cycles;
+      debug_counters.page_reclaims = usage.ru_minflt - start_counters.page_reclaims;
+      debug_counters.page_faults = usage.ru_majflt - start_counters.page_faults;
+      debug_counters.swaps = usage.ru_nswap - start_counters.swaps;
+      debug_counters.fs_input = usage.ru_inblock - start_counters.fs_input;
+      debug_counters.fs_output = usage.ru_oublock - start_counters.fs_output;
+    }
     
     if (update_result.should_kill)
     {
@@ -1467,12 +1721,15 @@ int main(void)
     }
   }
   
-  gl(glDeleteVertexArrays(1, &renderer.vao));
-  gl(glDeleteBuffers(1, &renderer.vbo));
-  gl(glDeleteProgram(renderer.program));
-  
-  close_glfw_window(window);
-  
+  for (OSX_Window *window = osx_state.first;
+       window;
+       window = window->next)
+  {
+    gl(glDeleteVertexArrays(1, &window->renderer.vao));
+    gl(glDeleteBuffers(1, &window->renderer.vbo));
+    gl(glDeleteProgram(window->renderer.program));
+    close_glfw_window(window);
+  }
   FT_Done_FreeType(freetype_library);
   glfwTerminate();
   return 0;
