@@ -1,0 +1,52 @@
+version(2);
+project_name = "marker";
+
+patterns = {
+ "*.c",
+ "*.h",
+ "*.bat",
+ "*.sh",
+ "*.glsl",
+};
+
+blacklist_patterns = {
+ ".*",
+};
+
+load_paths = {
+ .win = {{ .path = "", .recursive = true, .relative = true }},
+};
+
+commands = {
+
+ .build = {
+  .win = "build.bat",
+  .out = "*compilation*",
+  .footer_panel = true,
+  .save_dirty_files = true,
+  .cursor_at_end = false,
+ },
+
+ .build_debug = {
+  .win = "build.bat && raddbg.exe build\marker.exe",
+  .out = "*compilation*",
+  .footer_panel = true,
+  .save_dirty_files = true,
+  .cursor_at_end = false,
+ },
+
+ .build_run = {
+  .win = "build.bat && build\marker.exe",
+  .out = "*compilation*",
+  .footer_panel = true,
+  .save_dirty_files = true,
+  .cursor_at_end = false,
+ },
+
+};
+
+fkey_command = {
+ .F2 = "build",
+ .F3 = "build_debug",
+ .F4 = "build_run",
+};
