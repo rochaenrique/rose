@@ -2,6 +2,8 @@
 
 ## Win32 & Platform Layers
  - [ ] Cleanup pass of the gl-win32 code
+   - [ ] Check gl extension string
+   - [ ] Add gl vsync extension
  - [ ] Graphics and os abstraction layers
    - [ ] Code vulkan example
    - [ ] (bonus) Try linux vulkan version
