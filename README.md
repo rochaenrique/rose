@@ -1,9 +1,13 @@
-# Minimum Necessary
-Stuff to do so it's basically a reduced raylib
- - [ ] Windows glfw port
- - [ ] Revert back to single window and single update function API (for now)
- - [ ] <win32.h> Port
+# TODO
 
+## Win32 & Platform Layers
+ - [ ] Cleanup pass of the gl-win32 code
+ - [ ] Graphics and os abstraction layers
+   - [ ] Code vulkan example
+   - [ ] (bonus) Try linux vulkan version
+ - [ ] Graphics and os independant rendering layer
+
+## Higher lever layers
  - UI improvements
    - [ ] Push and get from clipboard
    - [ ] Draw rects with gradient

@@ -7,10 +7,17 @@ patterns = {
  "*.bat",
  "*.sh",
  "*.glsl",
+ "*.4coder"
 };
 
 blacklist_patterns = {
  ".*",
+ "*.exe",
+ "*.o",
+ "*.rdi",
+ "*.pdb",
+ "build/*",
+ "ext/*",
 };
 
 load_paths = {
@@ -24,23 +31,23 @@ commands = {
   .out = "*compilation*",
   .footer_panel = true,
   .save_dirty_files = true,
-  .cursor_at_end = false,
+  .cursor_at_end = true,
  },
 
  .build_debug = {
-  .win = "build.bat && raddbg.exe build\marker.exe",
+  .win = "raddbg --ipc kill_all & build.bat && raddbg --ipc run",
   .out = "*compilation*",
   .footer_panel = true,
   .save_dirty_files = true,
-  .cursor_at_end = false,
+  .cursor_at_end = true,
  },
 
  .build_run = {
-  .win = "build.bat && build\marker.exe",
+  .win = "build.bat && build\marker_win32.exe",
   .out = "*compilation*",
   .footer_panel = true,
   .save_dirty_files = true,
-  .cursor_at_end = false,
+  .cursor_at_end = true,
  },
 
 };
