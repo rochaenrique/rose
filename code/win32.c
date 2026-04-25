@@ -1,19 +1,8 @@
-#include "win32.h"
-
 void *
 w32_memory_commit(U64 size)
 {
   void *result = VirtualAlloc(0, size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
   assert(result); // TODO(erb): think of adding some error reporting here
-  return result;
-}
-
-Arena
-w32_arena_alloc(U64 size)
-{
-  void *memory = w32_memory_commit(size);
-  assert(memory != 0); // TODO(erb): think of adding some error handling/reporting here
-  Arena result = arena_make(memory, size);
   return result;
 }
 
@@ -57,7 +46,6 @@ w32_get_codebase_file_paths(Arena *arena, HINSTANCE instance)
   return paths;
 }
 
-
 FILETIME 
 w32_get_last_write_time(char *path)
 {
@@ -72,15 +60,14 @@ w32_get_last_write_time(char *path)
   return result;
 }
 
+#if 0
 // TODO(erb): think of error reporting here
 W32_App_Library 
-w32_load_app_library(Arena *temp_arena, String path, String temp_path)
+w32_load_app_library(String path, String temp_path)
 {
-  supress_unused(temp_arena);
-  
   W32_App_Library library = {0};
   
-  Scratch scratch = scratch_begin(temp_arena);
+  Scratch scratch = scratch_begin(0, 0);
   char *cpath = push_cstr(scratch.arena, path);
   char *temp_cpath = push_cstr(scratch.arena, temp_path);
   
@@ -110,6 +97,7 @@ w32_load_app_library(Arena *temp_arena, String path, String temp_path)
   scratch_end(&scratch);
   return library;
 }
+#endif
 
 I32
 w32_get_display_refresh_rate()
@@ -218,5 +206,108 @@ w32_pre_first_frame(W32_Counters *counters)
 {
   counters->last_cycles = __rdtsc();
   counters->last_clock = w32_get_wall_clock();
+}
+
+
+void w32_debug_free_file_memory(void *memory)
+{
+  if (memory != 0)
+  {
+    VirtualFree(memory, 0, MEM_RELEASE);
+  }
+}
+
+Read_File_Result w32_debug_read_entire_file(char *file_path)
+{
+  // TODO(erb): protect against size(file_name) < MAX_PATH
+  // TODO(erb): add flags and have a "should null terminate" flag
+  
+  Read_File_Result result = {0};
+  
+  HANDLE file_handle = CreateFileA(file_path,
+                                   GENERIC_READ, FILE_SHARE_READ,
+                                   0, OPEN_EXISTING,
+                                   0, 0);
+  
+  if (file_handle != INVALID_HANDLE_VALUE) 
+  {
+    LARGE_INTEGER file_size_result;
+    if (GetFileSizeEx(file_handle, &file_size_result)) 
+    {
+      U32 size = safe_truncate_U64_to_U32(file_size_result.QuadPart);
+      void *memory = VirtualAlloc(0, size + 1, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+      if (memory)
+      {
+        DWORD bytes_read = 0;
+        if (ReadFile(file_handle, memory, size, &bytes_read, 0) &&
+            bytes_read == size)
+        {
+          result.memory = memory;
+          result.size = size;
+          ((U8 *)result.memory)[size] = 0;
+        }
+        else
+        {
+          w32_debug_free_file_memory(memory);
+          OutputDebugStringA("Error: ReadFile()\n");
+        }
+      }
+      else
+      {
+        OutputDebugStringA("Error: VirtualAlloc()\n");
+      }
+    }
+    else
+    {
+      OutputDebugStringA("Error: GetFileSizeEx()\n");
+    }
+    
+    if (!CloseHandle(file_handle))
+    {
+      OutputDebugStringA("Error: CloseHandle()\n");
+    }
+  }
+  else
+  {
+    OutputDebugStringA("Error: CreateFileA()\n");
+  }
+  
+  return result;
+}
+
+B32 w32_debug_write_entire_file(char *file_path, void *memory, U32 memory_size)
+{
+  // TODO(erb): protect against size(file_name) < MAX_PATH
+  B32 result = false;
+  HANDLE file_handle = CreateFileA(file_path,
+                                   GENERIC_WRITE, 
+                                   0, 0, 
+                                   CREATE_ALWAYS,
+                                   0, 0);
+  
+  if (file_handle != INVALID_HANDLE_VALUE) 
+  {
+    DWORD bytes_written;
+    if (WriteFile(file_handle, memory, memory_size, &bytes_written, 0) &&
+        bytes_written == memory_size)
+    {
+      result = true;
+    }
+    else
+    {
+      OutputDebugStringA("Error: ReadFile()\n");
+    }
+    
+    if (!CloseHandle(file_handle))
+    {
+      OutputDebugStringA("Error: CloseHandle()\n");
+    }
+  }
+  else
+  {
+    OutputDebugStringA("Error: CreateFileA()\n");
+  }
+  
+  return result;
 }
 

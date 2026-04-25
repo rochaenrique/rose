@@ -1,11 +1,13 @@
 @echo off
 
+raddbg --ipc kill_all
+
 if not exist build (
 	mkdir build
 )
 
 rem /wd4189 
-set COMPILER_FLAGS=/WX /W4 /Zi /FC /wd4201 /wd4100 /nologo
+set COMPILER_FLAGS=/WX /W4 /Zi /FC /wd4201 /wd4189 /wd4100 /nologo
 
 set LINKER_FLAGS=/incremental:no
 
@@ -21,7 +23,7 @@ pushd build
 del *.pdb > NUL 2> NUL
 del *.rdi > NUL 2> NUL
 
-cl %COMPILER_FLAGS% /D_USRDLL /D_WINDLL ..\marker_app.c /LD /link %LINKER_FLAGS% /DLL /PDB:marker_app_%timestamp%.pdb /EXPORT:update_and_render
+rem cl %COMPILER_FLAGS% /D_USRDLL /D_WINDLL ..\marker_app.c /LD /link %LINKER_FLAGS% /DLL /PDB:marker_app_%timestamp%.pdb /EXPORT:update_and_render
 
 cl %COMPILER_FLAGS% /I../ext /I"..\ext\freetype-2.14.2\include" ..\win32_main.c user32.lib gdI32.lib winmm.lib /link %LINKER_FLAGS% "..\ext\freetype-2.14.2\objs\freetype.lib" 
 

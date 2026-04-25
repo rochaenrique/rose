@@ -1,13 +1,17 @@
 # TODO
 
 ## Win32 & Platform Layers
- - [ ] Cleanup pass of the gl-win32 code
-   - [ ] Check gl extension string
-   - [ ] Add gl vsync extension
  - [ ] Graphics and os abstraction layers
    - [ ] Code vulkan example
    - [ ] (bonus) Try linux vulkan version
  - [ ] Graphics and os independant rendering layer
+
+ - [ ] Research and add SRGB
+
+ - [ ] Temp Arena
+   - [ ] Thread local, with conflict solving
+   - [ ] Temp Arena block macro
+   - [ ] Not longer fixed size
 
 ## Higher lever layers
  - UI improvements

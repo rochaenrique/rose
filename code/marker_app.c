@@ -188,7 +188,7 @@ void debug_update_and_ui(App_Links *app, Input_State *input_state, Debug_Counter
             String str = push_cstr_copy(temp_arena, debug_key_code_cstr((Key_Code)key_idx));
             ui_border_thickness(ui, 1.0f) ui_parent_flagged(ui, UIFlags_DrawBorder)
             {
-              ui_text(ui, str_from(str, S("KeyCode_").length));
+              ui_text(ui, str_postfix(str, S("KeyCode_").length));
             }
           }
         }

@@ -185,7 +185,6 @@ U32 label##_stack_count
 
 typedef struct UI_Ctx
 {
-  Scratch_Memory scratch_mem;
 	Arena arena;
 	Arena last_arena;
   Font_Face default_font_face;

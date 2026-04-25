@@ -3,14 +3,22 @@
 #ifndef WIN32_H
 #define WIN32_H
 
+#include "base/base_inc.h"
 #include <windows.h>
-#include "marker_platform.h"
 
 typedef struct W32_GL_Window
 {
   HWND window_handle;
   HGLRC gl_context;
 } W32_GL_Window;
+
+#if 0
+#define UPDATE_AND_RENDER(name) App_Update_Result name(App_Memory *memory, \
+Font_Data *default_font, \
+Input_State *input, \
+Render_Data *renderer, \
+Debug_Counters frame_debug_counters)
+typedef UPDATE_AND_RENDER(Update_And_Render_Func);
 
 typedef struct W32_App_Library
 {
@@ -19,6 +27,7 @@ typedef struct W32_App_Library
   FILETIME last_write_time;
   B32 valid;
 } W32_App_Library;
+#endif
 
 // TODO(erb): think of a better way of grouping clock/frame stuff together
 // this is a really lazy way of doing it, sleep_is_granular, target_fps and target_seconds_per_frame are initalized once and the rest is calculated every frame. 

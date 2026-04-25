@@ -769,7 +769,7 @@ String osx_get_executable_directory(Arena *arena)
   Index_U64 path_sep = str_index_char_backward(path, '/');
   pf_assert(path_sep.exists);
   
-  String result = str_copy(arena, str_clip(path, path_sep.value));
+  String result = str_copy(arena, str_prefix(path, path_sep.value));
   return result;
 }
 

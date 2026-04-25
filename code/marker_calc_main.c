@@ -154,7 +154,7 @@ Expr_Value peek_expr(String str, U64 *consume_idx)
     result.kind = Expr_Value_Kind_Number;
     
     U64 number = 0;
-    if (str_to_U64(str_clip(str, max(index.value, 1)), &number)) 
+    if (str_to_U64(str_prefix(str, max(index.value, 1)), &number)) 
     {
       result.number = number;
     }
@@ -320,7 +320,7 @@ Expr *parse_expr(Arena *arena, String str)
     
     U64 consume = 0;
     Expr_Value peek = peek_expr(stream, &consume);
-    stream = str_from(stream, max(consume, 1));
+    stream = str_postfix(stream, max(consume, 1));
     
     Expr *last = list.last;
     Expr *node = sll_push_allocate(arena, &list, Expr);

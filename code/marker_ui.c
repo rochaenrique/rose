@@ -299,7 +299,7 @@ void wrap_text_element(Arena *arena, UI_Element *element)
         
         // NOTE(erb): Append new line
         UI_Line_Node *line = push_struct(arena, UI_Line_Node);
-        line->content = str_from(text->content, wrap_idx);
+        line->content = str_postfix(text->content, wrap_idx);
         text->last_line = old_line->next = line;
         text->line_count++;
         last_line_begin = wrap_idx;
@@ -681,8 +681,6 @@ void ui_init(UI_Ctx *ctx, Arena *arena)
 {
 	ctx->arena = push_sub_arena(arena, kb(64));
 	ctx->last_arena = push_sub_arena(arena, kb(64));
-  mem_scratch_init(arena, &ctx->scratch_mem);
-  
 }
 
 void ui_begin_frame(UI_Ctx *ctx, Font_Face font, Input_State *input, Screen_Rect_F32 root_rect)
@@ -910,7 +908,7 @@ UI_Element *ui_make_element(UI_Ctx *ctx, UI_Key key, String str, UI_Flags flags)
            ch_idx < str.length;
            word_count++) 
       {
-        String word = str_next_word(str_from(str, ch_idx));
+        String word = str_next_word(str_postfix(str, ch_idx));
         if (word.length > largest_word.length)
         {
           largest_word = word;
@@ -1138,7 +1136,7 @@ void ui_push_draw_cursor_and_highlight(UI_Ctx *ctx,
 {
   UI_Draw_Cmd *cursor = sll_push_allocate(&ctx->arena, &ctx->defered_draw, UI_Draw_Cmd);
   UI_Text cursor_sub = text;
-  cursor_sub.content = str_clip(cursor_sub.content, text_state->cursor);
+  cursor_sub.content = str_prefix(cursor_sub.content, text_state->cursor);
   
   V2f cursor_sub_size = measure_text_size_ignore_lines_and_tabs(cursor_sub.font, 
                                                                 cursor_sub.content, 
@@ -1347,7 +1345,7 @@ B32 ui_apply_text_action(UI_Ctx *ctx, Text_Action action, Text_Edit_State *state
       action.code_point != 0||
       action.flags != TextActionFlags_None)
   {
-    Scratch scratch = mem_scratch_begin(&ctx->scratch_mem);
+    Scratch scratch = scratch_begin(&input_arena, 1);
 #if 0
     Text_Cmd text_cmd = text_cmd_from_state_and_action(ctx->window, scratch.arena, input_builder->buffer, state, &action);
 #else
@@ -1375,7 +1373,7 @@ B32 ui_apply_text_action(UI_Ctx *ctx, Text_Action action, Text_Edit_State *state
 #endif
     }
     
-    mem_scratch_end(&ctx->scratch_mem, &scratch);
+    scratch_end(&scratch);
   }
   
   return result;

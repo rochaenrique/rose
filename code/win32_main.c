@@ -1,15 +1,118 @@
-#include "marker.c"
-
 #include <windows.h>
 #include <psapi.h>
 #include <stdio.h>
 
+#include "base/base_inc.h"
+#include "gl_inc.h"
+#include "win32_wgl_inc.h"
+#include "win32.h"
+
+#include "base/base_imp.c"
 #include "win32.c"
-#include "gl_defs.h"
-#include "win32_wgl_defs.h"
+
 
 #define GET_PROC_ADDR(MODULE, VALUE, STR) (*(PROC *)(&(VALUE)) = GetProcAddress((MODULE), (STR)))
 #define WGL_GET_PROC_ADDR(VALUE, STR) (*(PROC *)(&(VALUE)) = w32_wglGetProcAddress((STR)))
+
+typedef struct WGL_Ext_String
+{
+  String str;
+  struct WGL_Ext_String *next;
+} WGL_Ext_String;
+
+typedef struct WGL_Ext_String_Table
+{
+  U32 total_count;
+  U32 slot_count;
+  WGL_Ext_String *slots;
+} WGL_Ext_String_Table;
+
+B32
+wgl_ext_table_contains(WGL_Ext_String_Table table, String ext)
+{
+  B32 result = false;
+  
+  U64 idx = str_hash(ext) % table.slot_count;
+  WGL_Ext_String *slot = (table.slots + idx);
+  
+  for(;slot; 
+      slot = slot->next)
+  {
+    if (str_equals(slot->str, ext)) 
+    {
+      result = true;
+      break;
+    }
+  }
+  
+  return result;
+}
+
+WGL_Ext_String_Table
+build_wgl_ext_table(Arena *arena, String haystack)
+{
+  WGL_Ext_String_Table table = {0};
+  
+  //- create the hash table array
+  // NOTE(erb): dumb heuristic on how many extension strings there are to create the hash table size
+  U32 ext_length_estimate = (U32)S("WGL_ARB_").length + 15;
+  table.slot_count = (U32)(haystack.length / ext_length_estimate); 
+  table.slots = push_array(arena, table.slot_count, WGL_Ext_String);
+  
+  U64 last_delim = 0;
+  while (last_delim < haystack.length)
+  {
+    //- get next space seperator
+    U64 next_delim = 0;
+    Index_U64 delim_idx = str_index_char_start(haystack, ' ', last_delim);
+    if (delim_idx.exists)
+    {
+      next_delim = delim_idx.value;
+    }
+    else
+    {
+      break;
+    }
+    
+    String ext = str_slice(haystack, last_delim, next_delim);
+    
+    U64 idx = str_hash(ext) % table.slot_count;
+    WGL_Ext_String *slot = (table.slots + idx);
+    
+    //- test if extension is allready in table
+    B32 exists = false;
+    for(;slot; 
+        slot = slot->next)
+    {
+      if (str_equals(slot->str, ext)) 
+      {
+        exists = true;
+        break;
+      }
+      if (!slot->next)
+      {
+        break;
+      }
+    }
+    
+    //- add extension if it isn't in the table
+    if (!exists)
+    {
+      //- if the current slot is not empty add a next
+      if (slot->str.length != 0)
+      {
+        slot = slot->next = push_struct(arena, WGL_Ext_String);
+      }
+      slot->str = ext;
+      table.total_count++;
+    }
+    
+    last_delim = (next_delim + 1);
+  }
+  
+  return table;
+}
+
 
 void
 w32_init_opengl(HINSTANCE instance)
@@ -27,17 +130,16 @@ w32_init_opengl(HINSTANCE instance)
   if (error.value == 0)
   {
 #define X(NAME, RETURN, PARAMS) GET_PROC_ADDR(gl_module, w32_##NAME, #NAME);
-#include "win32_wgl_funcs.h"
+#include "win32_wgl_functions_x_list.h"
 #undef X
     
-    int missing_wgl_func = 0;
-#define X(NAME, RETURN, PARAMS) if (w32_##NAME == 0){ missing_wgl_func = 1; }
-#include "win32_wgl_funcs.h"
+    B32 missing_wgl_func = false;
+#define X(NAME, RETURN, PARAMS) if (w32_##NAME == 0){ missing_wgl_func = true; }
+#include "win32_wgl_functions_x_list.h"
 #undef X
-    
     if (missing_wgl_func) 
     {
-      error = S("missingl wgl function");
+      error = S("missing wgl function");
     }
   }
   
@@ -121,24 +223,72 @@ w32_init_opengl(HINSTANCE instance)
       bootstrap_context = hglrc;
     }
     
+    if (error.value == 0)
+    {
+      //- load gl functions
+#define X(NAME, RETURN, PARAMS) GET_PROC_ADDR(gl_module, NAME, #NAME);
+#include "gl_functions_x_list.h"
+#undef X
+      
+      B32 missing_gl_function = false;
+#define X(NAME, RETURN, PARAMS) if (NAME == 0) { missing_gl_function = true; }
+#include "gl_functions_x_list.h"
+#undef X
+      
+      if (missing_gl_function) 
+      {
+        error = S("missing gl function");
+      }
+    }
     
     //- load opengl extensions
     if (error.value == 0) 
     {
       w32_wglMakeCurrent(dc, bootstrap_context);
       
-#define X(NAME, RETURN, PARAMS) GET_PROC_ADDR(gl_module, w32_##NAME, #NAME);
-#include "win32_wgl_extensions_funcs.h"
+#define X(NAME, RETURN, PARAMS, EXT_STR, REQUIRED) WGL_GET_PROC_ADDR(w32_##NAME, #NAME);
+#include "win32_wgl_extensions_functions_x_list.h"
 #undef X
       
-      B32 missing_wgl_ext_func = false;
-#define X(NAME, RETURN, PARAMS) if (w32_##NAME == 0){ missing_wgl_ext_func = 1; }
-#include "win32_wgl_extensions_funcs.h"
+#define X(NAME, RETURN, PARAMS, EXT_STR, REQUIRED) \
+if (REQUIRED && w32_##NAME == 0) \
+{ error = S("missing wgl extension function "## #NAME); }
+#include "win32_wgl_extensions_functions_x_list.h"
 #undef X
-      
-      if (missing_wgl_ext_func) 
+    }
+    
+    // NOTE(erb): glGetString deals with pure opengl extensions and WGL extensions do not appear in it. 
+    // Since we don't use any pure opengl extensions, we won't need to use it.
+    
+    scratch_block(scratch, 0, 0)
+    {
+      //- get wgl extension string and build hash table
+      WGL_Ext_String_Table ext_table = {0};
+      if (error.value == 0 && w32_wglGetExtensionsStringARB) 
       {
-        error = S("missingl wgl function");
+        String ext_str = SC((char *)w32_wglGetExtensionsStringARB(dc));
+        ext_table = build_wgl_ext_table(scratch.arena, ext_str);
+        if (ext_str.value == 0 || ext_table.slot_count == 0) 
+        {
+          error = S("couldn't get extension string");
+        }
+      }
+      
+      //- check against extension string
+      if (error.value == 0) 
+      {
+#define X(NAME, RETURN, PARAMS, EXT_STR, REQUIRED) \
+if (REQUIRED && !wgl_ext_table_contains(ext_table, S(EXT_STR))) \
+{ error = S("wgl extension string is missing required "##EXT_STR); } 
+#include "win32_wgl_extensions_functions_x_list.h"
+#undef X
+      }
+      
+      //- set the swap interval if we can
+      if (w32_wglSwapIntervalEXT && 
+          wgl_ext_table_contains(ext_table, S("WGL_EXT_swap_control")))
+      {
+        w32_wglSwapIntervalEXT(1);
       }
     }
     
@@ -162,14 +312,11 @@ w32_init_opengl(HINSTANCE instance)
     assert(unregistered);
   }
   
-  //- load gl functions
-#define X(NAME, RETURN, PARAMS) GET_PROC_ADDR(gl_module, gl_##NAME, #NAME);
-#include "gl_funcs.h"
-#undef X
-  
   if (error.length != 0) 
   {
-    fprintf(stdout, "%.*s\n", str_expand(error));
+    char msg[64];
+    sprintf_s(msg, sizeof(msg), "%.*s\n", str_expand(error));
+    OutputDebugStringA(msg);
     ExitProcess(1);
   }
 }
@@ -191,7 +338,7 @@ w32_make_opengl_window(HINSTANCE instance)
     ATOM atom = RegisterClass(&window_class);
     if (atom == 0) 
     {
-      fprintf(stdout, "failed to create window class");
+      OutputDebugStringA("failed to create window class\n");
       ExitProcess(1);
     }
     
@@ -203,7 +350,7 @@ w32_make_opengl_window(HINSTANCE instance)
                            0, 0, instance, 0); // parent, menu, instance, param
     if (window == INVALID_HANDLE_VALUE) 
     {
-      fprintf(stdout, "failed to create window");
+      OutputDebugStringA("failed to create window\n");
       ExitProcess(1);
     }
   }
@@ -245,7 +392,7 @@ w32_make_opengl_window(HINSTANCE instance)
                                               &num_formats);
     if (!did_pf || num_formats == 0) 
     {
-      fprintf(stdout, "failed to choose wgl pixel format");
+      OutputDebugStringA("failed to choose wgl pixel format\n");
       ExitProcess(1);
     }
     
@@ -253,7 +400,7 @@ w32_make_opengl_window(HINSTANCE instance)
     BOOL spf = SetPixelFormat(dc, format_idx, &format_desc);
     if (!spf) 
     {
-      fprintf(stdout, "failed to set pixel format");
+      OutputDebugStringA("failed to set pixel format\n");
       ReleaseDC(window, dc);
       ExitProcess(1);
     }
@@ -276,13 +423,13 @@ w32_make_opengl_window(HINSTANCE instance)
     gl_context = hglrc;
   }
   
-  if (error.value == 0) 
+  if (error.value != 0) 
   {
     fprintf(stdout, "%.*s\n", str_expand(error));
   }
   
   W32_GL_Window result = {0};
-  if (error.value != 0)
+  if (error.value == 0)
   {
     result.window_handle = window;
     result.gl_context = gl_context;
@@ -318,11 +465,50 @@ w32_poll_events()
   return should_stop;
 }
 
+global DWORD w32_thread_storage_index;
+
+void os_init()
+{
+  w32_thread_storage_index = TlsAlloc();
+  if (w32_thread_storage_index == TLS_OUT_OF_INDEXES)
+  {
+    OutputDebugStringA("failed to allocated thread local storage\n");
+    ExitProcess(1);
+  }
+}
+
+void
+os_release()
+{
+  TlsFree(w32_thread_storage_index);
+}
+
+void thread_context_set(Thread_Context *context)
+{
+  TlsSetValue(w32_thread_storage_index, (void *)context);
+}
+
+Thread_Context *thread_context_get(void)
+{
+  Thread_Context *result = (Thread_Context *)TlsGetValue(w32_thread_storage_index);
+  return result;
+}
+
+
 int __stdcall WinMain(HINSTANCE instance, 
                       HINSTANCE prev_instance, 
                       LPSTR cmd_line, 
                       int show)
 {
+  os_init();
+  
+  Arena permanent_arena = arena_alloc(mb(128), w32_memory_commit);
+  Arena transient_arena = arena_alloc(mb(128), w32_memory_commit);
+  
+  Thread_Context *tctx = push_struct(&permanent_arena, Thread_Context);
+  thread_context_init(tctx, w32_memory_commit);
+  thread_context_set(tctx);
+  
   //- clock setup
   W32_Counters counters = w32_init_counters();
   
@@ -337,12 +523,12 @@ int __stdcall WinMain(HINSTANCE instance,
   HGLRC gl_context = gl_window.gl_context;
   
   //- project stuff setup
-  Arena permanent_arena = w32_arena_alloc(mb(128));
-  Arena transient_arena = w32_arena_alloc(mb(128));
   Codebase_File_Paths paths = w32_get_codebase_file_paths(&permanent_arena, instance);
   
   //- load app layer
   // TODO(erb): handle this error with message box
+  
+#if 0
   W32_App_Library app_library = w32_load_app_library(&transient_arena, paths.library, paths.temp_library);
   
   Render_Data renderer = {0};
@@ -355,6 +541,7 @@ int __stdcall WinMain(HINSTANCE instance,
     w32_debug_free_file_memory(vertex_file.memory);
     w32_debug_free_file_memory(fragment_file.memory);
   }
+#endif
   
   //- update loop
   ShowWindow(window, show); // TODO(erb): think of a good place to put this function, maybe a pre-first-frame?
@@ -371,8 +558,8 @@ int __stdcall WinMain(HINSTANCE instance,
     HDC dc = w32_gl_render_begin(window, gl_context);
     
     //- render
-    gl_glClearColor(1.0f, 1.0f, 0.0f, 1.0f);
-    gl_glClear(GL_COLOR_BUFFER_BIT);
+    glClearColor(1.0f, 1.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
     
     //- w32 gl end
     w32_wait_for_target_frame_time(&counters);
@@ -381,5 +568,6 @@ int __stdcall WinMain(HINSTANCE instance,
     w32_gather_counters(&counters);
   }
   
+  os_release();
   return 0;
 }

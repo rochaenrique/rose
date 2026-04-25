@@ -35,7 +35,7 @@ commands = {
  },
 
  .build_debug = {
-  .win = "raddbg --ipc kill_all & build.bat && raddbg --ipc run",
+  .win = "build.bat && raddbg --ipc run",
   .out = "*compilation*",
   .footer_panel = true,
   .save_dirty_files = true,

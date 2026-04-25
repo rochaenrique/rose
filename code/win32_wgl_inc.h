@@ -6,16 +6,29 @@
 typedef F32 FLOAT;
 typedef U32 UINT;
 
-//- wgl extension funcs
+
+// TODO(erb): think of a way to reduce the "hackiness" of so many X lists.
+// WGL extensions for example are a bit ridiculous to use, especially with the "required" parameter.
+// Maybe just have code generation.
+
+//- wgl function declarations
 #define X(NAME, RETURN, PARAMS) typedef RETURN W32_##NAME PARAMS;
-#include "win32_wgl_funcs.h"
-#include "win32_wgl_extensions_funcs.h"
+#include "win32_wgl_functions_x_list.h"
 #undef X
 
-//- wgl extension funciton pointers
+//- wgl funciton pointers
 #define X(NAME, RETURN, PARAMS) global W32_##NAME * w32_##NAME = 0;
-#include "win32_wgl_funcs.h"
-#include "win32_wgl_extensions_funcs.h"
+#include "win32_wgl_functions_x_list.h"
+#undef X
+
+//- wgl extensions function declarations
+#define X(NAME, RETURN, PARAMS, EXT_STR, REQUIRED) typedef RETURN W32_##NAME PARAMS;
+#include "win32_wgl_extensions_functions_x_list.h"
+#undef X
+
+//- wgl extensions function pointers
+#define X(NAME, RETURN, PARAMS, EXT_STR, REQUIRED) global W32_##NAME * w32_##NAME = 0;
+#include "win32_wgl_extensions_functions_x_list.h"
 #undef X
 
 //- WGL_ARB_pixel_format constants
