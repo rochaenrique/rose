@@ -1,6 +1,7 @@
 # build
 /build
 *.exe
+*.exp
 *.obj
 *.lib
 *.dll
@@ -12,6 +13,7 @@ glfw*.bin.MACOS/
 freetype*/
 
 # misc
+code/build/.vs/
 .vs/
 .idea/
 .DS_Store
