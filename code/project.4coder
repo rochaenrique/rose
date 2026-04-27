@@ -7,7 +7,8 @@ patterns = {
  "*.bat",
  "*.sh",
  "*.glsl",
- "*.4coder"
+ "*.4coder",
+ "../README.md",
 };
 
 blacklist_patterns = {

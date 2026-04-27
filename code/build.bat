@@ -25,7 +25,8 @@ del *.rdi > NUL 2> NUL
 
 rem cl %COMPILER_FLAGS% /D_USRDLL /D_WINDLL ..\marker_app.c /LD /link %LINKER_FLAGS% /DLL /PDB:marker_app_%timestamp%.pdb /EXPORT:update_and_render
 
-cl %COMPILER_FLAGS% /I../ext /I"..\ext\freetype-2.14.2\include" ..\win32_main.c user32.lib gdI32.lib winmm.lib /link %LINKER_FLAGS% "..\ext\freetype-2.14.2\objs\freetype.lib" 
+cl %COMPILER_FLAGS% /I../ext /I"..\ext\freetype-2.14.2\include" ..\win32_gl_example.c user32.lib gdI32.lib winmm.lib /link %LINKER_FLAGS% "..\ext\freetype-2.14.2\objs\freetype.lib" 
+cl %COMPILER_FLAGS% /I../ext /I"..\ext\freetype-2.14.2\include" ..\win32_vulkan_example.c user32.lib gdI32.lib winmm.lib /link %LINKER_FLAGS% "..\ext\freetype-2.14.2\objs\freetype.lib" 
 
 popd
 
