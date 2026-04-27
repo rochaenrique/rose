@@ -12,6 +12,7 @@ glfw*.bin.MACOS/
 freetype*/
 
 # misc
+.vs/
 .idea/
 .DS_Store
 *.dSYM/
