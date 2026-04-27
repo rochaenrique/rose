@@ -1,4 +1,19 @@
+# build
+/build
+*.exe
+*.obj
+*.lib
+*.dll
+*.pdb
+
+# external
+raylib*macos/
+glfw*.bin.MACOS/
+freetype*/
+
+# misc
 .idea/
+.DS_Store
 *.dSYM/
 *.a
 *.zip
@@ -7,15 +22,8 @@
 *.MACOS*
 *.dylib
 *.dump
-.DS_Store
+*.rdi
 
-raylib*macos/
-glfw*.bin.MACOS/
-freetype*/
-
-fdui
-calc
-main
 
 
 
