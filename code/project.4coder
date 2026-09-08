@@ -1,14 +1,15 @@
 version(2);
-project_name = "marker";
+project_name = "rose";
 
 patterns = {
  "*.c",
+ "*.cpp",
  "*.h",
+ "*.md",
+ "*.txt",
  "*.bat",
- "*.sh",
- "*.glsl",
  "*.4coder",
- "../README.md",
+ "*.glsl",
 };
 
 blacklist_patterns = {
@@ -17,44 +18,8 @@ blacklist_patterns = {
  "*.o",
  "*.rdi",
  "*.pdb",
- "build/*",
- "ext/*",
 };
 
 load_paths = {
  .win = {{ .path = "", .recursive = true, .relative = true }},
-};
-
-commands = {
-
- .build = {
-  .win = "build.bat",
-  .out = "*compilation*",
-  .footer_panel = true,
-  .save_dirty_files = true,
-  .cursor_at_end = true,
- },
-
- .build_debug = {
-  .win = "build.bat && raddbg --ipc run",
-  .out = "*compilation*",
-  .footer_panel = true,
-  .save_dirty_files = true,
-  .cursor_at_end = true,
- },
-
- .build_run = {
-  .win = "build.bat && build\marker_win32.exe",
-  .out = "*compilation*",
-  .footer_panel = true,
-  .save_dirty_files = true,
-  .cursor_at_end = true,
- },
-
-};
-
-fkey_command = {
- .F2 = "build",
- .F3 = "build_debug",
- .F4 = "build_run",
 };

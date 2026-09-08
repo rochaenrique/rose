@@ -1,16 +1,19 @@
 /* date = April 22nd 2026 0:01 pm */
 
-#ifndef WIN32_WGL_DEFS_H
-#define WIN32_WGL_DEFS_H
+#ifndef WIN32_GL_H
+#define WIN32_GL_H
+
+typedef struct W32_GL_State W32_GL_State;
+struct W32_GL_State
+{
+  HDC current_dc;
+  HMODULE gl_module;
+  HWND dummy_window;
+  HGLRC dummy_context;
+};
 
 typedef F32 FLOAT;
 typedef U32 UINT;
-
-typedef struct W32_GL_Window
-{
-  HWND window_handle;
-  HGLRC gl_context;
-} W32_GL_Window;
 
 // TODO(erb): think of a way to reduce the "hackiness" of so many X lists.
 // WGL extensions for example are a bit ridiculous to use, especially with the "required" parameter.
@@ -106,4 +109,4 @@ typedef struct W32_GL_Window
 #define ERROR_INVALID_VERSION_ARB               0x2095
 #define ERROR_INVALID_PROFILE_ARB               0x2096
 
-#endif // WIN32_WGL_DEFS_H
+#endif // WIN32_GL_H

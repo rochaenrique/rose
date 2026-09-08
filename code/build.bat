@@ -1,33 +1,25 @@
 @echo off
 
-raddbg --ipc kill_all
-
-if not exist build (
-	mkdir build
+if 0==1 (
+  if not exist builder (
+    mkdir builder
+  )
+  pushd builder
+    del *.pdb > NUL 2> NUL
+    del *.rdi > NUL 2> NUL
+    cl /WX /W4 /FC /FS /Zi /wd4201 /nologo /I.. ..\builder.c user32.lib gdI32.lib winmm.lib shell32.lib /link /incremental:no
+    rem cl /WX /W4 /FC /O2 /wd4201 /nologo /I.. ..\builder.c user32.lib gdI32.lib winmm.lib shell32.lib /link /incremental:no
+  popd
 )
 
-rem /wd4189 
-set COMPILER_FLAGS=/WX /W4 /Zi /FC /wd4201 /wd4189 /wd4100 /nologo
-
-set LINKER_FLAGS=/incremental:no
-
-for /F "tokens=1-4 delims=:. " %%a in ("%time%") do (
-	set HH=%%a
-	set MM=%%b
-  set SS=%%c
-  set MS=%%d
+if 0==1 (
+  raddbg --ipc kill_all
+  set BLD_CC_FLAGS=DEBUG
+  .\builder\builder examples win32 infer
 )
-set timestamp=%date:~-4,4%%date:~-10,2%%date:~-7,2%_%HH%%MM%%SS%%MS%
 
-pushd build
-del *.pdb > NUL 2> NUL
-del *.rdi > NUL 2> NUL
-
-rem cl %COMPILER_FLAGS% /D_USRDLL /D_WINDLL ..\marker_app.c /LD /link %LINKER_FLAGS% /DLL /PDB:marker_app_%timestamp%.pdb /EXPORT:update_and_render
-
-cl %COMPILER_FLAGS% /I../ext /I"..\ext\freetype-2.14.2\include" ..\win32_gl_example.c user32.lib gdI32.lib winmm.lib /link %LINKER_FLAGS% "..\ext\freetype-2.14.2\objs\freetype.lib" 
-cl %COMPILER_FLAGS% /I../ext /I"..\ext\freetype-2.14.2\include" ..\win32_vulkan_example.c user32.lib gdI32.lib winmm.lib /link %LINKER_FLAGS% "..\ext\freetype-2.14.2\objs\freetype.lib" 
-
-popd
-
-rem copy build ..\current_build\build
+if 1==1 (
+  pushd build
+    cl /FC /nologo /WX /W4 /Z7 /FS /wd4201 /wd4100 /D_USRDLL /D_WINDLL /I.. /I..\external\freetype ..\win32_ui_app.c user32.lib shell32.lib winmm.lib gdI32.lib /LD /link /incremental:no /DLL /EXPORT:update_and_render
+  popd
+)

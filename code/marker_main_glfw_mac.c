@@ -33,18 +33,20 @@ B32 is_opengl_initialized;
 
 #define glfw_context(glfw_window) defer_loop(glfwMakeContextCurrent(glfw_window), glfwMakeContextCurrent(0))
 
-typedef struct GLFW_Payload
+typedef struct GLFW_Payload GLFW_Payload;
+struct GLFW_Payload
 {
   Input_Event event_stream[64];
   U32 event_stream_count;
-} GLFW_Payload;
+};
 
-typedef struct OSX_Window
+typedef struct OSX_Window OSX_Window;
+struct OSX_Window
 {
   Window_ID id;
   
   Input_State input;
-  Render_Data renderer;
+  Q2D_State renderer;
   
   struct OSX_Window *next;
   struct OSX_Window *hash_next;
@@ -53,17 +55,18 @@ typedef struct OSX_Window
   
   GLFW_Payload glfw_payload;
   GLFWwindow *glfw;
-} OSX_Window;
+};
 
-typedef struct OSX_State
+typedef struct OSX_State OSX_State;
+struct OSX_State
 {
-  String default_font_path;
+  String8 default_font_path;
   
-  String vertex_shader_path;
-  String fragment_shader_path;
+  String8 vertex_shader_path;
+  String8 fragment_shader_path;
   I64 shaders_load_time;
   
-  String input_file_path;
+  String8 input_file_path;
   I32 input_file_fd;
   Debug_State kind;
   
@@ -75,21 +78,23 @@ typedef struct OSX_State
   
   OSX_Window *first;
   OSX_Window *first_free;
-} OSX_State;
+};
 
-typedef struct OSX_App_Library
+typedef struct OSX_App_Library OSX_App_Library;
+struct OSX_App_Library
 {
   void *handle;
   Update_And_Render_Func *update_and_render;
   I64 load_time;
-} OSX_App_Library;
+};
 
-typedef struct OSX_Read_File_Result
+typedef struct OSX_Read_File_Result OSX_Read_File_Result;
+struct OSX_Read_File_Result
 {
   void *data;
   U64 size;
   I64 load_time;
-} OSX_Read_File_Result;
+};
 
 void *osx_allocate(U64 size)
 {
@@ -107,14 +112,14 @@ void *osx_allocate(U64 size)
   result = mmap(0, size, protection, flags, fd, offset);
 #endif
   
-  pf_assert(result);
+  pf_Assert(result);
   return result;
 }
 
 void osx_free(void *memory, U64 size)
 {
   I32 result = munmap(memory, size);
-  pf_assert(result != 0);
+  pf_Assert(result != 0);
 }
 
 Date osx_tm_to_date(struct tm *time)
@@ -134,25 +139,25 @@ Date osx_tm_to_date(struct tm *time)
 Date osx_get_today()
 {
 	struct timeval today;
-	pf_assert(gettimeofday(&today, 0) == 0);
+	pf_Assert(gettimeofday(&today, 0) == 0);
 	struct tm *time = localtime(&today.tv_sec);
 	
 	Date result = osx_tm_to_date(time);
 	return result;
 }
 
-I32 osx_ensure_open(String path, I32 flags)
+I32 osx_ensure_open(String8 path, I32 flags)
 {
   I32 result = open(str_to_temp512_cstr(path), flags);
   if (result == -1)
   {
-    pf_log("Failed to get file stat (%.*s): %s\n", str_expand(path), strerror(errno));
-    pf_assert(0);
+    pf_log("Failed to get file stat (%.*s): %s\n", S8Expand(path), strerror(errno));
+    pf_Assert(0);
   }
   return result;
 }
 
-OSX_Read_File_Result osx_read_file(Arena *arena, String file_path)
+OSX_Read_File_Result osx_read_file(Arena *arena, String8 file_path)
 {
   OSX_Read_File_Result result = {};
   
@@ -163,10 +168,10 @@ OSX_Read_File_Result osx_read_file(Arena *arena, String file_path)
     if (fstat(file_descriptor, &file_stat) == 0)
     {
       U64 size = (U64)file_stat.st_size;
-      void *buffer = (void *)push_array(arena, size+1, U8);
+      void *buffer = (void *)PushArray(arena, size+1, U8);
       
       I64 bytes_read = read(file_descriptor, buffer, size);
-      pf_assert(bytes_read != -1);
+      pf_Assert(bytes_read != -1);
       ((U8 *)buffer)[size] = 0;
       
       result.data = buffer;
@@ -175,14 +180,14 @@ OSX_Read_File_Result osx_read_file(Arena *arena, String file_path)
     }
     else
     {
-      pf_log("Failed to get file stat (%.*s): %s\n", str_expand(file_path), strerror(errno));
+      pf_log("Failed to get file stat (%.*s): %s\n", S8Expand(file_path), strerror(errno));
     }
     
     close(file_descriptor);
   }
   else
   {
-    pf_log("Failed to open file (%.*s): %s\n", str_expand(file_path), strerror(errno));
+    pf_log("Failed to open file (%.*s): %s\n", S8Expand(file_path), strerror(errno));
   }
   
   return result;
@@ -193,7 +198,7 @@ OSX_Read_File_Result fallback_vertex_shader(OSX_Read_File_Result file)
   if (!file.data)
   {
     file.data = (U8 *)fallback_vertex_shader_source;
-    file.size = S(fallback_vertex_shader_source).length;
+    file.size = S8(fallback_vertex_shader_source).length;
   }
   return file;
 }
@@ -203,21 +208,21 @@ OSX_Read_File_Result fallback_fragment_shader(OSX_Read_File_Result file)
   if (!file.data)
   {
     file.data = (U8 *)fallback_fragment_shader_source;
-    file.size = S(fallback_fragment_shader_source).length;
+    file.size = S8(fallback_fragment_shader_source).length;
   }
   return file;
 }
 
 FT_Library freetype_library;
 
-Font_Data *osx_freetype_load_font(Arena *arena, String path)
+Font_Data *osx_freetype_load_font(Arena *arena, String8 path)
 {
   if (freetype_library == 0) 
   {
     if (FT_Init_FreeType(&freetype_library))
     {
       pf_log("Failed to initialize freetype!\n");
-      pf_assert(false);
+      pf_Assert(false);
     }
   }
   
@@ -229,7 +234,7 @@ Font_Data *osx_freetype_load_font(Arena *arena, String path)
     if (FT_New_Face(freetype_library, cstr_path, 0, &font_face))
     {
       pf_log("Failed to load font (%s)!\n", cstr_path);
-      pf_assert(false);
+      pf_Assert(false);
     }
   }
   scratch_end(&scratch);
@@ -237,13 +242,13 @@ Font_Data *osx_freetype_load_font(Arena *arena, String path)
   FT_Set_Pixel_Sizes(font_face, 0, 48);
   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
   
-  Font_Data *font_data = push_struct(arena, Font_Data);
+  Font_Data *font_data = PushStruct(arena, Font_Data);
   font_data->height = font_face->height >> 6;
   font_data->below_base_line_offset = -(font_face->bbox.yMin >> 6);
   font_data->above_base_line_offset = font_face->bbox.yMax >> 6;
   
   for (U32 char_idx = 0;
-       char_idx < array_size(font_data->ascii_glyph_table);
+       char_idx < ArraySize(font_data->ascii_glyph_table);
        char_idx++) 
   {
     if (!FT_Load_Char(font_face, char_idx, FT_LOAD_RENDER))
@@ -294,93 +299,93 @@ Font_Data *osx_freetype_load_font(Arena *arena, String path)
 
 void verify_key_codes_with_glfw_keys()
 {
-  pf_assert(KeyCode_Space == GLFW_KEY_SPACE);
-  pf_assert(KeyCode_Apostrophe == GLFW_KEY_APOSTROPHE);
-  pf_assert(KeyCode_Comma == GLFW_KEY_COMMA);
-  pf_assert(KeyCode_Minus == GLFW_KEY_MINUS);
-  pf_assert(KeyCode_Period == GLFW_KEY_PERIOD);
-  pf_assert(KeyCode_Slash == GLFW_KEY_SLASH);
-  pf_assert(KeyCode_Zero == GLFW_KEY_0);
-  pf_assert(KeyCode_One == GLFW_KEY_1);
-  pf_assert(KeyCode_Two == GLFW_KEY_2);
-  pf_assert(KeyCode_Three == GLFW_KEY_3);
-  pf_assert(KeyCode_Four == GLFW_KEY_4);
-  pf_assert(KeyCode_Five == GLFW_KEY_5);
-  pf_assert(KeyCode_Six == GLFW_KEY_6);
-  pf_assert(KeyCode_Seven == GLFW_KEY_7);
-  pf_assert(KeyCode_Eight == GLFW_KEY_8);
-  pf_assert(KeyCode_Nine == GLFW_KEY_9);
-  pf_assert(KeyCode_Semicolon == GLFW_KEY_SEMICOLON);
-  pf_assert(KeyCode_Equal == GLFW_KEY_EQUAL);
-  pf_assert(KeyCode_A == GLFW_KEY_A);
-  pf_assert(KeyCode_B == GLFW_KEY_B);
-  pf_assert(KeyCode_C == GLFW_KEY_C);
-  pf_assert(KeyCode_D == GLFW_KEY_D);
-  pf_assert(KeyCode_E == GLFW_KEY_E);
-  pf_assert(KeyCode_F == GLFW_KEY_F);
-  pf_assert(KeyCode_G == GLFW_KEY_G);
-  pf_assert(KeyCode_H == GLFW_KEY_H);
-  pf_assert(KeyCode_I == GLFW_KEY_I);
-  pf_assert(KeyCode_J == GLFW_KEY_J);
-  pf_assert(KeyCode_K == GLFW_KEY_K);
-  pf_assert(KeyCode_L == GLFW_KEY_L);
-  pf_assert(KeyCode_M == GLFW_KEY_M);
-  pf_assert(KeyCode_N == GLFW_KEY_N);
-  pf_assert(KeyCode_O == GLFW_KEY_O);
-  pf_assert(KeyCode_P == GLFW_KEY_P);
-  pf_assert(KeyCode_Q == GLFW_KEY_Q);
-  pf_assert(KeyCode_R == GLFW_KEY_R);
-  pf_assert(KeyCode_S == GLFW_KEY_S);
-  pf_assert(KeyCode_T == GLFW_KEY_T);
-  pf_assert(KeyCode_U == GLFW_KEY_U);
-  pf_assert(KeyCode_V == GLFW_KEY_V);
-  pf_assert(KeyCode_W == GLFW_KEY_W);
-  pf_assert(KeyCode_X == GLFW_KEY_X);
-  pf_assert(KeyCode_Y == GLFW_KEY_Y);
-  pf_assert(KeyCode_Z == GLFW_KEY_Z);
-  pf_assert(KeyCode_LeftBracket == GLFW_KEY_LEFT_BRACKET);
-  pf_assert(KeyCode_Backslash == GLFW_KEY_BACKSLASH);
-  pf_assert(KeyCode_RightBracket == GLFW_KEY_RIGHT_BRACKET);
-  pf_assert(KeyCode_Backtick == GLFW_KEY_GRAVE_ACCENT);
-  pf_assert(KeyCode_Escape == GLFW_KEY_ESCAPE);
-  pf_assert(KeyCode_Enter == GLFW_KEY_ENTER);
-  pf_assert(KeyCode_Tab == GLFW_KEY_TAB);
-  pf_assert(KeyCode_Backspace == GLFW_KEY_BACKSPACE);
-  pf_assert(KeyCode_Insert == GLFW_KEY_INSERT);
-  pf_assert(KeyCode_Delete == GLFW_KEY_DELETE);
-  pf_assert(KeyCode_Right == GLFW_KEY_RIGHT);
-  pf_assert(KeyCode_Left == GLFW_KEY_LEFT);
-  pf_assert(KeyCode_Down == GLFW_KEY_DOWN);
-  pf_assert(KeyCode_Up == GLFW_KEY_UP);
-  pf_assert(KeyCode_PageUp == GLFW_KEY_PAGE_UP);
-  pf_assert(KeyCode_PageDown == GLFW_KEY_PAGE_DOWN);
-  pf_assert(KeyCode_Home == GLFW_KEY_HOME);
-  pf_assert(KeyCode_End == GLFW_KEY_END);
-  pf_assert(KeyCode_CapsLock == GLFW_KEY_CAPS_LOCK);
-  pf_assert(KeyCode_ScrollLock == GLFW_KEY_SCROLL_LOCK);
-  pf_assert(KeyCode_NumLock == GLFW_KEY_NUM_LOCK);
-  pf_assert(KeyCode_PrintScreen == GLFW_KEY_PRINT_SCREEN);
-  pf_assert(KeyCode_Pause == GLFW_KEY_PAUSE);
-  pf_assert(KeyCode_F1 == GLFW_KEY_F1);
-  pf_assert(KeyCode_F2 == GLFW_KEY_F2);
-  pf_assert(KeyCode_F3 == GLFW_KEY_F3);
-  pf_assert(KeyCode_F4 == GLFW_KEY_F4);
-  pf_assert(KeyCode_F5 == GLFW_KEY_F5);
-  pf_assert(KeyCode_F6 == GLFW_KEY_F6);
-  pf_assert(KeyCode_F7 == GLFW_KEY_F7);
-  pf_assert(KeyCode_F8 == GLFW_KEY_F8);
-  pf_assert(KeyCode_F9 == GLFW_KEY_F9);
-  pf_assert(KeyCode_F10 == GLFW_KEY_F10);
-  pf_assert(KeyCode_F11 == GLFW_KEY_F11);
-  pf_assert(KeyCode_F12 == GLFW_KEY_F12);
-  pf_assert(KeyCode_LeftShift == GLFW_KEY_LEFT_SHIFT);
-  pf_assert(KeyCode_LeftControl == GLFW_KEY_LEFT_CONTROL);
-  pf_assert(KeyCode_LeftAlt == GLFW_KEY_LEFT_ALT);
-  pf_assert(KeyCode_LeftSuper == GLFW_KEY_LEFT_SUPER);
-  pf_assert(KeyCode_RightShift == GLFW_KEY_RIGHT_SHIFT);
-  pf_assert(KeyCode_RightControl == GLFW_KEY_RIGHT_CONTROL);
-  pf_assert(KeyCode_RightAlt == GLFW_KEY_RIGHT_ALT);
-  pf_assert(KeyCode_RightSuper == GLFW_KEY_RIGHT_SUPER);
+  pf_Assert(KeyCode_Space == GLFW_KEY_SPACE);
+  pf_Assert(KeyCode_Apostrophe == GLFW_KEY_APOSTROPHE);
+  pf_Assert(KeyCode_Comma == GLFW_KEY_COMMA);
+  pf_Assert(KeyCode_Minus == GLFW_KEY_MINUS);
+  pf_Assert(KeyCode_Period == GLFW_KEY_PERIOD);
+  pf_Assert(KeyCode_Slash == GLFW_KEY_SLASH);
+  pf_Assert(KeyCode_Zero == GLFW_KEY_0);
+  pf_Assert(KeyCode_One == GLFW_KEY_1);
+  pf_Assert(KeyCode_Two == GLFW_KEY_2);
+  pf_Assert(KeyCode_Three == GLFW_KEY_3);
+  pf_Assert(KeyCode_Four == GLFW_KEY_4);
+  pf_Assert(KeyCode_Five == GLFW_KEY_5);
+  pf_Assert(KeyCode_Six == GLFW_KEY_6);
+  pf_Assert(KeyCode_Seven == GLFW_KEY_7);
+  pf_Assert(KeyCode_Eight == GLFW_KEY_8);
+  pf_Assert(KeyCode_Nine == GLFW_KEY_9);
+  pf_Assert(KeyCode_Semicolon == GLFW_KEY_SEMICOLON);
+  pf_Assert(KeyCode_Equal == GLFW_KEY_EQUAL);
+  pf_Assert(KeyCode_A == GLFW_KEY_A);
+  pf_Assert(KeyCode_B == GLFW_KEY_B);
+  pf_Assert(KeyCode_C == GLFW_KEY_C);
+  pf_Assert(KeyCode_D == GLFW_KEY_D);
+  pf_Assert(KeyCode_E == GLFW_KEY_E);
+  pf_Assert(KeyCode_F == GLFW_KEY_F);
+  pf_Assert(KeyCode_G == GLFW_KEY_G);
+  pf_Assert(KeyCode_H == GLFW_KEY_H);
+  pf_Assert(KeyCode_I == GLFW_KEY_I);
+  pf_Assert(KeyCode_J == GLFW_KEY_J);
+  pf_Assert(KeyCode_K == GLFW_KEY_K);
+  pf_Assert(KeyCode_L == GLFW_KEY_L);
+  pf_Assert(KeyCode_M == GLFW_KEY_M);
+  pf_Assert(KeyCode_N == GLFW_KEY_N);
+  pf_Assert(KeyCode_O == GLFW_KEY_O);
+  pf_Assert(KeyCode_P == GLFW_KEY_P);
+  pf_Assert(KeyCode_Q == GLFW_KEY_Q);
+  pf_Assert(KeyCode_R == GLFW_KEY_R);
+  pf_Assert(KeyCode_S == GLFW_KEY_S);
+  pf_Assert(KeyCode_T == GLFW_KEY_T);
+  pf_Assert(KeyCode_U == GLFW_KEY_U);
+  pf_Assert(KeyCode_V == GLFW_KEY_V);
+  pf_Assert(KeyCode_W == GLFW_KEY_W);
+  pf_Assert(KeyCode_X == GLFW_KEY_X);
+  pf_Assert(KeyCode_Y == GLFW_KEY_Y);
+  pf_Assert(KeyCode_Z == GLFW_KEY_Z);
+  pf_Assert(KeyCode_LeftBracket == GLFW_KEY_LEFT_BRACKET);
+  pf_Assert(KeyCode_Backslash == GLFW_KEY_BACKSLASH);
+  pf_Assert(KeyCode_RightBracket == GLFW_KEY_RIGHT_BRACKET);
+  pf_Assert(KeyCode_Backtick == GLFW_KEY_GRAVE_ACCENT);
+  pf_Assert(KeyCode_Escape == GLFW_KEY_ESCAPE);
+  pf_Assert(KeyCode_Enter == GLFW_KEY_ENTER);
+  pf_Assert(KeyCode_Tab == GLFW_KEY_TAB);
+  pf_Assert(KeyCode_Backspace == GLFW_KEY_BACKSPACE);
+  pf_Assert(KeyCode_Insert == GLFW_KEY_INSERT);
+  pf_Assert(KeyCode_Delete == GLFW_KEY_DELETE);
+  pf_Assert(KeyCode_Right == GLFW_KEY_RIGHT);
+  pf_Assert(KeyCode_Left == GLFW_KEY_LEFT);
+  pf_Assert(KeyCode_Down == GLFW_KEY_DOWN);
+  pf_Assert(KeyCode_Up == GLFW_KEY_UP);
+  pf_Assert(KeyCode_PageUp == GLFW_KEY_PAGE_UP);
+  pf_Assert(KeyCode_PageDown == GLFW_KEY_PAGE_DOWN);
+  pf_Assert(KeyCode_Home == GLFW_KEY_HOME);
+  pf_Assert(KeyCode_End == GLFW_KEY_END);
+  pf_Assert(KeyCode_CapsLock == GLFW_KEY_CAPS_LOCK);
+  pf_Assert(KeyCode_ScrollLock == GLFW_KEY_SCROLL_LOCK);
+  pf_Assert(KeyCode_NumLock == GLFW_KEY_NUM_LOCK);
+  pf_Assert(KeyCode_PrintScreen == GLFW_KEY_PRINT_SCREEN);
+  pf_Assert(KeyCode_Pause == GLFW_KEY_PAUSE);
+  pf_Assert(KeyCode_F1 == GLFW_KEY_F1);
+  pf_Assert(KeyCode_F2 == GLFW_KEY_F2);
+  pf_Assert(KeyCode_F3 == GLFW_KEY_F3);
+  pf_Assert(KeyCode_F4 == GLFW_KEY_F4);
+  pf_Assert(KeyCode_F5 == GLFW_KEY_F5);
+  pf_Assert(KeyCode_F6 == GLFW_KEY_F6);
+  pf_Assert(KeyCode_F7 == GLFW_KEY_F7);
+  pf_Assert(KeyCode_F8 == GLFW_KEY_F8);
+  pf_Assert(KeyCode_F9 == GLFW_KEY_F9);
+  pf_Assert(KeyCode_F10 == GLFW_KEY_F10);
+  pf_Assert(KeyCode_F11 == GLFW_KEY_F11);
+  pf_Assert(KeyCode_F12 == GLFW_KEY_F12);
+  pf_Assert(KeyCode_LeftShift == GLFW_KEY_LEFT_SHIFT);
+  pf_Assert(KeyCode_LeftControl == GLFW_KEY_LEFT_CONTROL);
+  pf_Assert(KeyCode_LeftAlt == GLFW_KEY_LEFT_ALT);
+  pf_Assert(KeyCode_LeftSuper == GLFW_KEY_LEFT_SUPER);
+  pf_Assert(KeyCode_RightShift == GLFW_KEY_RIGHT_SHIFT);
+  pf_Assert(KeyCode_RightControl == GLFW_KEY_RIGHT_CONTROL);
+  pf_Assert(KeyCode_RightAlt == GLFW_KEY_RIGHT_ALT);
+  pf_Assert(KeyCode_RightSuper == GLFW_KEY_RIGHT_SUPER);
 }
 
 Modifier_Flags modifiers_from_glfw_mods(I32 mods)
@@ -455,8 +460,8 @@ Mouse_Code mouse_code_from_glfw(I32 button)
 Input_Event *push_payload_stream_event(GLFWwindow *glfw_window)
 {
   GLFW_Payload *payload = (GLFW_Payload *)glfwGetWindowUserPointer(glfw_window);
-  pf_assert(payload);
-  pf_assert(payload->event_stream_count <= array_size(payload->event_stream));
+  pf_Assert(payload);
+  pf_Assert(payload->event_stream_count <= ArraySize(payload->event_stream));
   
   Input_Event *event = (payload->event_stream + payload->event_stream_count++);
   return event;
@@ -465,7 +470,7 @@ Input_Event *push_payload_stream_event(GLFWwindow *glfw_window)
 void key_callback(GLFWwindow *glfw_window, int key, int scancode, int action, int mods) 
 {
   // NOTE(erb): scancode is ignored for now
-  supress_unused(scancode);
+  SupressUnused(scancode);
   
   Key_Code code = glfw_key_to_key_code(key);
   if (code != KeyCode_None && (action == GLFW_PRESS || action == GLFW_RELEASE))
@@ -554,7 +559,7 @@ V2f glfw_cursor_position(GLFWwindow *window)
   return result;
 }
 
-void osx_glfw_init_window(OSX_Window *window, String title, V2i size)
+void osx_glfw_init_window(OSX_Window *window, String8 title, V2i size)
 {
   if (glfwInit())
   {
@@ -583,11 +588,11 @@ void osx_glfw_init_window(OSX_Window *window, String title, V2i size)
         
         is_opengl_initialized = true;
         // NOTE(erb): opengl info
-        pf_log("LOG: OpenGL version: %s\n", glGetString(GL_VERSION));
-        pf_log("LOG: OpenGL Vendor: %s\n", glGetString(GL_VENDOR));
-        pf_log("LOG: OpenGL Renderer: %s\n", glGetString(GL_RENDERER));
-        pf_log("LOG: OpenGL Version: %s\n", glGetString(GL_VERSION));
-        pf_log("LOG: OpenGL GLSL Version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
+        pf_log("LOG: OpenGL version: %s\n", glGetString8(GL_VERSION));
+        pf_log("LOG: OpenGL Vendor: %s\n", glGetString8(GL_VENDOR));
+        pf_log("LOG: OpenGL Renderer: %s\n", glGetString8(GL_RENDERER));
+        pf_log("LOG: OpenGL Version: %s\n", glGetString8(GL_VERSION));
+        pf_log("LOG: OpenGL GLSL Version: %s\n", glGetString8(GL_SHADING_LANGUAGE_VERSION));
         I32 max_vertex_attribs;
         gl(glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &max_vertex_attribs));
         pf_log("LOG: OpenGL max vertex_shader Attributes Allowed: %d\n", max_vertex_attribs);
@@ -613,7 +618,7 @@ void osx_glfw_init_window(OSX_Window *window, String title, V2i size)
   else
   {
     pf_log("Failed to initialized glfw");
-    pf_assert(false);
+    pf_Assert(false);
   }
 }
 
@@ -633,9 +638,9 @@ U64 osx_timer_ns()
 {
   mach_timebase_info_data_t info;
   kern_return_t kern_result = mach_timebase_info(&info);
-  pf_assert(kern_result == KERN_SUCCESS);
+  pf_Assert(kern_result == KERN_SUCCESS);
   
-  U64 raw = mach_absolute_time();
+  U64 raw = mach_Absolute_time();
   U64 nanos = raw * info.numer / info.denom;
   
 #if 0
@@ -652,15 +657,15 @@ U64 osx_timer_ns()
 UPDATE_AND_RENDER(update_and_render_stub) 
 {
   // NOTE(erb): empty
-  supress_unused(memory);
-  supress_unused(frame_debug_counters);
-  supress_unused(exec_directory);
+  SupressUnused(memory);
+  SupressUnused(frame_debug_counters);
+  SupressUnused(exec_directory);
   
   App_Update_Result result = {0};
   return result;
 }
 
-B32 osx_has_file_changed(String file_path, I64 compare_to_time)
+B32 osx_has_file_changed(String8 file_path, I64 compare_to_time)
 {
   B32 result = 0;
   
@@ -672,13 +677,13 @@ B32 osx_has_file_changed(String file_path, I64 compare_to_time)
   }
   else
   {
-    pf_log("Failed to get file stats (%.*s)\n", str_expand(file_path));
+    pf_log("Failed to get file stats (%.*s)\n", S8Expand(file_path));
   }
   
   return result;
 }
 
-void osx_copy_file(String source_path, String dest_path)
+void osx_copy_file(String8 source_path, String8 dest_path)
 {
   I32 source_fd = open(str_to_temp512_cstr(source_path), O_RDONLY);
   if (source_fd != -1) 
@@ -689,25 +694,25 @@ void osx_copy_file(String source_path, String dest_path)
       I32 result = fcopyfile(source_fd, dest_fd, 0, COPYFILE_ALL);
       if (result < 0) 
       {
-        pf_log("Failed to copy (%.*s) to (%.*s)\n", str_expand(source_path), str_expand(dest_path));
+        pf_log("Failed to copy (%.*s) to (%.*s)\n", S8Expand(source_path), S8Expand(dest_path));
       }
       
       close(source_fd);
     }
     else
     {
-      pf_log("Failed to open (%.*s)\n", str_expand(dest_path));
+      pf_log("Failed to open (%.*s)\n", S8Expand(dest_path));
     }
     
     close(source_fd);
   }
   else
   {
-    pf_log("Failed to open (%.*s)\n", str_expand(source_path));
+    pf_log("Failed to open (%.*s)\n", S8Expand(source_path));
   }
 }
 
-OSX_App_Library osx_load_app_library(String library_path, String temp_library_path)
+OSX_App_Library osx_load_app_library(String8 library_path, String8 temp_library_path)
 {
   OSX_App_Library result = {0};
   result.update_and_render = update_and_render_stub;
@@ -729,8 +734,8 @@ OSX_App_Library osx_load_app_library(String library_path, String temp_library_pa
     else
     {
       pf_log("Failed to load library dll (%.*s), original: (%.*s)\n", 
-             str_expand(temp_library_path), 
-             str_expand(library_path));
+             S8Expand(temp_library_path), 
+             S8Expand(library_path));
     }
     
     if (!result.update_and_render) 
@@ -754,22 +759,22 @@ void osx_unload_app_library(OSX_App_Library *library)
   library->update_and_render = update_and_render_stub;
 }
 
-String osx_get_executable_directory(Arena *arena)
+String8 osx_get_executable_directory(Arena *arena)
 {
   char path_buffer[PATH_MAX];
   U32 path_size = PATH_MAX;
   B32 error = _NSGetExecutablePath(path_buffer, &path_size);
-  pf_assert(!error);
+  pf_Assert(!error);
   
   // NOTE(erb): get the directory
-  String path = {0};
+  String8 path = {0};
   path.value = path_buffer;
   path.length = cstr_length(path.value);
   
   Index_U64 path_sep = str_index_char_backward(path, '/');
-  pf_assert(path_sep.exists);
+  pf_Assert(path_sep.exists);
   
-  String result = str_copy(arena, str_prefix(path, path_sep.value));
+  String8 result = str_copy(arena, str_prefix(path, path_sep.value));
   return result;
 }
 
@@ -797,14 +802,14 @@ void update_input_from_glfw_event_stream(GLFW_Payload *payload, Input_State *inp
   {
     Input_Event *event = (payload->event_stream + event_idx);
     
-    pf_assert(input->event_stream_count <= array_size(input->event_stream));
+    pf_Assert(input->event_stream_count <= ArraySize(input->event_stream));
     Input_Event *event_copy = (input->event_stream + input->event_stream_count++);
     *event_copy = *event;
     event_copy->next = 0;
     
     switch (event->kind)
     {
-      case InputEventKind_None: pf_assert(false && "Got a InputEventKind_None");
+      case InputEventKind_None: pf_Assert(false && "Got a InputEventKind_None");
       
       case InputEventKind_Text: break;
       
@@ -855,42 +860,42 @@ void update_input_from_glfw_event_stream(GLFW_Payload *payload, Input_State *inp
 
 void begin_event_record(OSX_State *state)
 {
-  pf_log("Started Recording (%.*s)\n", str_expand(state->input_file_path));
+  pf_log("Started Recording (%.*s)\n", S8Expand(state->input_file_path));
   state->kind = DebugState_Recording;
   state->input_file_fd = open(str_to_temp512_cstr(state->input_file_path), O_CREAT|O_TRUNC|O_WRONLY, S_IRWXU);
-  pf_assert(state->input_file_fd != -1);
+  pf_Assert(state->input_file_fd != -1);
 }
 
 void end_event_record(OSX_State *state)
 {
-  pf_log("Ended Recording (%.*s)\n", str_expand(state->input_file_path));
+  pf_log("Ended Recording (%.*s)\n", S8Expand(state->input_file_path));
   state->kind = DebugState_None;
   I32 result = close(state->input_file_fd);
   state->input_file_fd = -1;
-  pf_assert(result != -1);
+  pf_Assert(result != -1);
 }
 
 void begin_event_play_back(OSX_State *state)
 {
-  pf_log("Started Playback (%.*s)\n", str_expand(state->input_file_path));
+  pf_log("Started Playback (%.*s)\n", S8Expand(state->input_file_path));
   state->kind = DebugState_Playing;
   state->input_file_fd = open(str_to_temp512_cstr(state->input_file_path), O_RDONLY);
-  pf_assert(state->input_file_fd != -1);
+  pf_Assert(state->input_file_fd != -1);
 }
 
 void end_event_play_back(OSX_State *state)
 {
-  pf_log("Ended Playback (%.*s)\n", str_expand(state->input_file_path));
+  pf_log("Ended Playback (%.*s)\n", S8Expand(state->input_file_path));
   state->kind = DebugState_None;
   I32 result = close(state->input_file_fd);
   state->input_file_fd = -1;
-  pf_assert(result != -1);
+  pf_Assert(result != -1);
 }
 
 void read_input_play_back(OSX_State *state, Input_State *input)
 {
   I64 bytes_read = read(state->input_file_fd, (void *)input, sizeof(Input_State));
-  pf_assert(bytes_read == 0 || bytes_read == sizeof(Input_State));
+  pf_Assert(bytes_read == 0 || bytes_read == sizeof(Input_State));
   
   if(bytes_read == 0)
   {
@@ -901,7 +906,7 @@ void read_input_play_back(OSX_State *state, Input_State *input)
 void write_input_recording(OSX_State *state, Input_State *input)
 {
   I64 bytes_written = write(state->input_file_fd, (void *)input, sizeof(Input_State));
-  pf_assert(bytes_written == sizeof(Input_State));
+  pf_Assert(bytes_written == sizeof(Input_State));
 }
 
 
@@ -909,21 +914,21 @@ void clear_input(Input_State *input)
 {
   // NOTE(erb): clear input transitions/delta
   input->event_stream_count = 0;
-  mem_zero((U8 *)input->event_stream, array_size(input->event_stream)*sizeof(Input_Event));
+  mem_zero((U8 *)input->event_stream, ArraySize(input->event_stream)*sizeof(Input_Event));
   input->screen_space_size.delta = v2ii(0);
   input->frame_buffer_size.delta = v2ii(0);
   input->cursor_reverse_y.delta = v2ff(0);
   input->scroll_offset = v2ff(0);
   
   for (U32 key_idx = 0;
-       key_idx < array_size(input->keys);
+       key_idx < ArraySize(input->keys);
        key_idx++)
   {
     input->keys[key_idx].half_transition_count = 0;
   }
   
   for (U32 button_idx = 0;
-       button_idx < array_size(input->mouse_buttons);
+       button_idx < ArraySize(input->mouse_buttons);
        button_idx++)
   {
     input->mouse_buttons[button_idx].half_transition_count = 0;
@@ -980,7 +985,7 @@ void osx_frame_begin(OSX_State *state)
     window->glfw_payload.event_stream_count = 0;
     
     // NOTE(erb): clear renderer
-    Render_Data *renderer = &window->renderer;
+    Q2D_State *renderer = &window->renderer;
     {
       renderer->screen_size = window->input.screen_space_size.end;
       renderer->frame_buffer_size = window->input.frame_buffer_size.end;
@@ -1055,7 +1060,7 @@ void osx_frame_end(OSX_State *state)
   {
     glfw_context(window->glfw)
     {
-      Render_Data *renderer = &window->renderer;
+      Q2D_State *renderer = &window->renderer;
       renderer->frame_buffer_size = window->input.frame_buffer_size.end;
       renderer->frame_buffer_size = window->input.frame_buffer_size.end;
       renderer->screen_size =  window->input.screen_space_size.end;
@@ -1100,12 +1105,12 @@ PLATFORM_MAKE_WINDOW(osx_make_window)
     }
     else
     {
-      window = push_struct(&g_state->permanent_arena, OSX_Window);
+      window = PushStruct(&g_state->permanent_arena, OSX_Window);
     }
     window->next = g_state->first;
     g_state->first = window;
   }
-  pf_assert(window);
+  pf_Assert(window);
   
   // NOTE(erb): initialization
   {
@@ -1115,11 +1120,11 @@ PLATFORM_MAKE_WINDOW(osx_make_window)
   }
   
   // NOTE(erb): id assignment
-  g_state->next_window_id = cap_bottom(g_state->next_window_id, 1);
+  g_state->next_window_id = CapBottom(g_state->next_window_id, 1);
   window->id = g_state->next_window_id++;
   
   // NOTE(erb): table insertion
-  I32 hash_idx = window->id % array_size(g_state->window_table);
+  I32 hash_idx = window->id % ArraySize(g_state->window_table);
   OSX_Window **hash_slot = (g_state->window_table + hash_idx);
   if (*hash_slot != 0)
   {
@@ -1135,7 +1140,7 @@ OSX_Window *get_window_from_id(OSX_State *state, Window_ID id)
   OSX_Window *result = 0;
   if (id != 0)
   {
-    I32 hash_idx = id % array_size(state->window_table);
+    I32 hash_idx = id % ArraySize(state->window_table);
     OSX_Window **hash_slot = (g_state->window_table + hash_idx);
     if (*hash_slot != 0)
     {
@@ -1151,11 +1156,11 @@ OSX_Window *get_window_from_id(OSX_State *state, Window_ID id)
       }
     }
   }
-  pf_assert(result);
+  pf_Assert(result);
   return result;
 }
 
-PLATFORM_GET_WINDOW_EVENTS(osx_get_window_events)
+PLATFORM_GET_WINDOW_EVENTS8(osx_get_window_events)
 {
   OSX_Window *window = get_window_from_id(g_state, handle);
   Input_State *input = &window->input;
@@ -1165,7 +1170,7 @@ PLATFORM_GET_WINDOW_EVENTS(osx_get_window_events)
 PLATFORM_GET_RENDERER_BUFFER(osx_get_renderer_buffer)
 {
   OSX_Window *window = get_window_from_id(g_state, handle);
-  Render_Data *renderer = &window->renderer;
+  Q2D_State *renderer = &window->renderer;
   return renderer;
 }
 
@@ -1179,8 +1184,8 @@ PLATFORM_GET_DEFAULT_FONT(osx_get_default_font)
 PLATFORM_GET_CLIPBOARD_STRING(osx_get_clipboard_str)
 {
   OSX_Window *window = get_window_from_id(g_state, handle);
-  const char* cstr = glfwGetClipboardString(window->glfw);
-  String result = push_cstr_copy(arena, (char *)cstr);
+  const char* cstr = glfwGetClipboardString8(window->glfw);
+  String8 result = push_cstr_copy(arena, (char *)cstr);
   return result;
 }
 
@@ -1188,7 +1193,7 @@ PLATFORM_SET_CLIPBOARD_STRING(osx_set_clipboard_str)
 {
   OSX_Window *window = get_window_from_id(g_state, handle);
   char *cstr = str_to_temp512_cstr(str);
-  glfwSetClipboardString(window->glfw, cstr);	
+  glfwSetClipboardString8(window->glfw, cstr);	
 }
 
 int main(void)
@@ -1198,26 +1203,26 @@ int main(void)
   
   // NOTE(erb): platform arenas 
   {
-    U64 permanent_arena_size = mb(64);
+    U64 permanent_arena_size = MB(64);
     void *permanent_arena_memory = osx_allocate(permanent_arena_size);
     arena_init(&osx_state.permanent_arena, permanent_arena_memory, permanent_arena_size);
     
-    U64 transient_arena_size = mb(128);
+    U64 transient_arena_size = MB(128);
     void *transient_arena_memory = osx_allocate(transient_arena_size);
     arena_init(&osx_state.transient_arena, transient_arena_memory, transient_arena_size);
   }
   
   // NOTE(erb): executable directory
-  String exec_directory = osx_get_executable_directory(&osx_state.permanent_arena);
+  String8 exec_directory = osx_get_executable_directory(&osx_state.permanent_arena);
   
   // NOTE(erb): paths setup
-  osx_state.vertex_shader_path = str_concat(&osx_state.permanent_arena, exec_directory, S("/vertex_shader_rect.glsl"));
-  osx_state.fragment_shader_path = str_concat(&osx_state.permanent_arena, exec_directory, S("/fragment_shader_rect.glsl"));
-  osx_state.input_file_path = str_concat(&osx_state.permanent_arena, exec_directory, S("/input_record.dump"));
+  osx_state.vertex_shader_path = str_concat(&osx_state.permanent_arena, exec_directory, S8("/vertex_shader_rect.glsl"));
+  osx_state.fragment_shader_path = str_concat(&osx_state.permanent_arena, exec_directory, S8("/fragment_shader_rect.glsl"));
+  osx_state.input_file_path = str_concat(&osx_state.permanent_arena, exec_directory, S8("/input_record.dump"));
   osx_state.input_file_fd = -1;
-  osx_state.default_font_path = str_concat(&osx_state.permanent_arena, exec_directory, S("/calibri.ttf"));
-  String library_path = str_concat(&osx_state.permanent_arena, exec_directory, S("/app.dylib"));
-  String temp_library_path = str_concat(&osx_state.permanent_arena, exec_directory, S("/temp_app.dylib"));
+  osx_state.default_font_path = str_concat(&osx_state.permanent_arena, exec_directory, S8("/arial.ttf"));
+  String8 library_path = str_concat(&osx_state.permanent_arena, exec_directory, S8("/app.dylib"));
+  String8 temp_library_path = str_concat(&osx_state.permanent_arena, exec_directory, S8("/temp_app.dylib"));
   
   // NOTE(erb): first app dll load
   OSX_App_Library app_library = osx_load_app_library(library_path, temp_library_path);
@@ -1235,10 +1240,10 @@ int main(void)
   // NOTE(erb): application memory setup
   App_Memory memory = {0};
   {
-    memory.permanent_memory_size = mb(64);
+    memory.permanent_memory_size = MB(64);
     memory.permanent_memory = osx_allocate(memory.permanent_memory_size);
     
-    memory.transient_memory_size = gb(1);
+    memory.transient_memory_size = GB(1);
     memory.transient_memory = osx_allocate(memory.transient_memory_size);
     
     memory.platform = g_platform;
@@ -1258,7 +1263,7 @@ int main(void)
       
       struct rusage usage;
       I32 result = getrusage(RUSAGE_SELF, &usage);
-      pf_assert(result == 0);
+      pf_Assert(result == 0);
       
       start_counters.frame_time_ns = osx_timer_ns();
       start_counters.cycles = cycle_counter();
@@ -1319,7 +1324,7 @@ int main(void)
     {
       struct rusage usage;
       I32 result = getrusage(RUSAGE_SELF, &usage);
-      pf_assert(result == 0);
+      pf_Assert(result == 0);
       
       debug_counters.frame_time_ns = osx_timer_ns() - start_counters.frame_time_ns;
       debug_counters.cycles = cycle_counter() - start_counters.cycles;

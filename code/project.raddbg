@@ -1,0 +1,127 @@
+// raddbg 0.9.28 project file
+
+recent_file: path: "fnt/stb_truetype/stb_truetype_fnt.c"
+recent_file: path: "examples/gfx_font.c"
+recent_file: path: "external/stb_truetype.h"
+recent_file: path: "gfx/q2d/q2d.c"
+recent_file: path: "base/base_string.c"
+recent_file: path: "gfx/q2d/gl/gl_q2d.c"
+recent_file: path: "fnt/fnt.c"
+recent_file: path: "os/os.c"
+recent_file: path: "base/base_memory.c"
+recent_file: path: "ui/ui.c"
+recent_file: path: "win32_ui_app.c"
+recent_file: path: "base/base_numeric.c"
+recent_file: path: "examples/win32_ui_main.c"
+recent_file: path: "gfx/win32/win32_gfx.c"
+recent_file: path: "D:/a/_work/1/s/src/vctools/crt/vcstartup/src/gs/amd64/amdsecgs.asm"
+recent_file: path: "os/win32/win32_os.c"
+recent_file: path: "gfx/gl/gl.c"
+recent_file: path: "gfx/gl/win32/win32_gl.c"
+recent_file: path: "examples/str_format_test.c"
+recent_file: path: "D:/a/_work/1/s/src/vctools/crt/vcstartup/src/startup/exe_common.inl"
+recent_file: path: "examples/w32_ui_main.c"
+recent_file: path: "builder.c"
+recent_file: path: "d:/os/obj/amd64fre/minkernel/crts/ucrt/src/appcrt/string/mt/objfre/amd64/minkernel/crts/ucrt/src/appcrt/string/strnlen.cpp"
+recent_file: path: "../../../../../Program Files (x86)/Windows Kits/10/include/10.0.26100.0/ucrt/stdio.h"
+recent_file: path: "D:/a/_work/1/s/src/vctools/crt/vcruntime/src/string/amd64/memcpy.asm"
+recent_file: path: "examples/gfx_event.c"
+recent_file: path: "gfx/linux/linux_gfx.c"
+recent_file: path: "fnt/freetype/freetype_fnt.c"
+recent_file: path: "examples/playground.c"
+recent_file: path: "gfx/gfx.c"
+recent_file: path: "d:/os/obj/amd64fre/minkernel/crts/ucrt/src/appcrt/stdio/mt/objfre/amd64/minkernel/crts/ucrt/src/appcrt/stdio/output.cpp"
+recent_file: path: "examples/gfx_gl_multiple.c"
+recent_file: path: "img/img.c"
+recent_file: path: "examples/coord_test.c"
+recent_file: path: "gfx/gl/win32/win32_wgl_extensions_functions_x_list.h"
+recent_file: path: "examples/win32_gfx_font.c"
+recent_file: path: "examples/win32_gfx_font_freetype.c"
+recent_file: path: "examples/win32_gfx_font_stb.c"
+recent_file: path: "D:/a/_work/1/s/src/vctools/crt/vcstartup/src/startup/exe_winmain.cpp"
+recent_file: path: "build/win32_gfx_font_stb.exe"
+recent_file: path: "examples/win32_gfx_gl_render.c"
+recent_file: path: "gfx/gl"
+recent_file: path: "gfx/gl/gl_functions_x_list.h"
+recent_file: path: "gfx/gl/win32/win32_wgl_functions_x_list.h"
+recent_file: path: "examples/linux_gfx.c"
+recent_file: path: "../../4cc-mac/code/custom/4coder_jumping.cpp"
+recent_file: path: "../../4cc-mac/code/custom/4coder_jump_sticky.cpp"
+recent_file: path: "../../4cc-mac/code/custom/4coder_helper.cpp"
+recent_file: path: "../../4cc-mac/code/custom/4coder_base_types.cpp"
+recent_file: path: "../../4cc-mac/code/platform_win32/win32_4ed.cpp"
+recent_file: path: "d:/os/obj/amd64fre/minkernel/crts/ucrt/src/desktopcrt/exec/mt/objfre/amd64/minkernel/crts/ucrt/src/desktopcrt/exec/system.cpp"
+recent_file: path: "d:/os/obj/amd64fre/minkernel/crts/ucrt/src/appcrt/misc/mt/objfre/amd64/minkernel/crts/ucrt/src/appcrt/misc/invalid_parameter.cpp"
+recent_file: path: "../../../AppData/Roaming/raddbg/examples/linux_gfx.c"
+recent_file: path: "build/linux_gfx"
+recent_file: path: "examples/vulkan_stress_test.c"
+recent_file: path: "gfx/vulkan/win32/win32_vulkan.c"
+recent_file: path: "examples/vulkan_multiple.c"
+recent_file: path: "examples/gl_stress_test.c"
+recent_file: path: "examples/gl_multiple.c"
+recent_file: path: "examples/gfx_example.c"
+recent_file: path: "gfx/vulkan/vulkan_functions_x_list.h"
+recent_file: path: "examples/win32_gfx_example.c"
+recent_file: path: "win32_vulkan_example.c"
+recent_file: path: "win32_main.c"
+recent_file: path: "win32_wgl_extensions_functions_x_list.h"
+recent_file: path: "d:/os/obj/amd64fre/minkernel/crts/ucrt/src/appcrt/stdio/mt/objfre/amd64/minkernel/crts/ucrt/inc/corecrt_internal_ptd_propagation.h"
+recent_file: path: "gl_functions_x_list.h"
+recent_file: path: "win32_wgl_functions_x_list.h"
+recent_file: path: "marker_win32.c"
+recent_file: path: "marker_platform.h"
+recent_file: path: "marker_platform.c"
+recent_file: path: "marker.c"
+recent_file: path: "../../4cc-mac/code/custom/4coder_erb_language.cpp"
+recent_file: path: "../../4cc-mac/code/4ed_api_parser.cpp"
+recent_file: path: "marker_opengl.c"
+recent_file: path: "marker_app.c"
+recent_file: path: "marker_ui.c"
+recent_file: path: "d:/os/obj/amd64fre/minkernel/crts/ucrt/src/appcrt/convert/mt/objfre/amd64/minkernel/crts/ucrt/inc/corecrt_internal.h"
+recent_file: path: "D:/a/_work/1/s/src/vctools/crt/vcstartup/src/misc/amd64/chkstk.asm"
+recent_file: path: "../../inhouse/win32/main.c"
+watch_pin: expression: result
+watch_pin: expression: result
+target:
+{
+  executable: "builder/builder.exe"
+  arguments: "examples linux win32 infer"
+  working_directory: ""
+}
+target:
+{
+  executable: "build/win32_playground.exe"
+  working_directory: "../../marker"
+}
+target:
+{
+  executable: "build/win32_gfx_font.exe"
+  working_directory: "../../marker"
+}
+target:
+{
+  executable: "build/win32_gfx_gl_multiple.exe"
+  working_directory: "../../marker"
+}
+target:
+{
+  executable: "build/win32_gfx_event.exe"
+  working_directory: "../../marker"
+}
+target:
+{
+  executable: "build/win32_ui_main.exe"
+  working_directory: "../../rose"
+  enabled: 1
+}
+target:
+{
+  executable: "build/win32_str_format_test.exe"
+  working_directory: "../../rose"
+}
+target:
+{
+  executable: "build/win32_gfx_gl_q2d.exe"
+  working_directory: "../../rose"
+}
+theme: "Default (Dark)"

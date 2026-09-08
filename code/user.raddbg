@@ -1,0 +1,447 @@
+// raddbg 0.9.28 user file
+
+recent_project:
+{
+  path: "project.raddbg"
+  name: ""
+}
+recent_project:
+{
+  path: "../project.raddbg"
+  name: ""
+}
+recent_project:
+{
+  path: "project.4coder"
+  name: ""
+}
+recent_project:
+{
+  path: "../../marker/code/project.raddbg"
+  name: ""
+}
+recent_project:
+{
+  path: "../../4cc-mac/project.raddbg"
+  name: ""
+}
+recent_project:
+{
+  path: "../../4cc-mac/raddbg.project"
+  name: ""
+}
+recent_project:
+{
+  path: "../../marengos-core/project.raddbg"
+  name: ""
+}
+recent_project: path: "../../../AppData/Roaming/raddbg/default.raddbg_project"
+window:
+{
+  size: 1363 944
+  pos: 278 98
+  monitor: "\\\\.\\DISPLAY1"
+  font_size: 14
+  smooth_code_text: 1
+  split_x
+  panels:
+  {
+    0.511294:
+    {
+      selected
+      text:
+      {
+        expression: "file:\"C:/Users/erb/dev/marker/code/examples/linux_gfx.c\".data"
+        project: "C:/Users/erb/AppData/Roaming/raddbg/default.raddbg_project"
+        query: input: ""
+        cursor_line: 1
+        cursor_column: 1
+        mark_line: 1
+        mark_column: 1
+      }
+      text:
+      {
+        expression: "file:\"C:/Users/erb/dev/marengos-core/engine/src/world/world.cpp\".data"
+        auto: 1
+        query:
+        {
+          input: ""
+          cmd: search
+        }
+        cursor_line: 166
+        cursor_column: 6
+        mark_line: 166
+        mark_column: 6
+        project: "C:\\Users\\erb\\dev\\marengos-core/project.raddbg"
+      }
+      text:
+      {
+        expression: "file:\"C:/Users/erb/dev/4cc-mac/code/custom/4coder_base_commands.cpp\".data"
+        auto: 1
+        project: "C:\\Users\\erb\\dev/4cc-mac/raddbg.project"
+        query: input: ""
+        cursor_line: 1712
+        cursor_column: 15
+        mark_line: 1712
+        mark_column: 15
+      }
+      text:
+      {
+        expression: "file:\"C:/Users/erb/dev/4cc-mac/code/custom/4coder_jumping.cpp\".data"
+        auto: 1
+        project: "C:/Users/erb/dev/4cc-mac/project.raddbg"
+        query: input: ""
+        cursor_line: 156
+        cursor_column: 1
+        mark_line: 156
+        mark_column: 1
+      }
+      text:
+      {
+        expression: "file:\"C:/Users/erb/dev/marker/code/base/base_string.c\".data"
+        auto: 1
+        project: "C:/Users/erb/dev/marker/code/project.raddbg"
+        query: input: ""
+        cursor_line: 1964
+        cursor_column: 6
+        mark_line: 1964
+        mark_column: 6
+      }
+      text:
+      {
+        selected
+        expression: "file:\"C:/Users/erb/dev/rose/code/win32_ui_app.c\".data"
+        project: "C:/Users/erb/dev/rose/code/project.raddbg"
+        query:
+        {
+          input: "\n\n\"dt\""
+          cmd: search
+        }
+        cursor_line: 2144
+        cursor_column: 1
+        mark_line: 2144
+        mark_column: 1
+        cursor: 0x7d1a
+        mark: 0x7d1a
+      }
+      text:
+      {
+        expression: "file:\"C:/Users/erb/dev/rose/code/base/base_string.c\".data"
+        auto: 1
+        project: "C:/Users/erb/dev/rose/code/project.raddbg"
+        query:
+        {
+          input: "\nidentif"
+          cmd: search
+        }
+        cursor_line: 1
+        cursor_column: 1
+        mark_line: 1
+        mark_column: 1
+        cursor: 0x2949
+        mark: 0x2949
+      }
+      disasm: query:
+      {
+        input: ""
+        cmd: search
+      }
+      text:
+      {
+        expression: "file:\"C:/Users/erb/dev/rose/project.rose\".data"
+        project: "C:/Users/erb/dev/rose/code/project.raddbg"
+        query: input: ":"
+        cursor_line: 1
+        cursor_column: 1
+        mark_line: 1
+        mark_column: 1
+        cursor: 0x63
+        mark: 0x73
+      }
+      text:
+      {
+        expression: "file:\"C:/Users/erb/dev/rose/code/project.raddbg\".data"
+        project: "C:/Users/erb/dev/rose/code/project.raddbg"
+        query:
+        {
+          input: ""
+          cmd: search
+        }
+        cursor: 0x14ce
+        mark: 0x14ce
+      }
+    }
+    0.488702:
+    {
+      0.720742:
+      {
+        text:
+        {
+          expression: "file:\"C:/Users/erb/dev/rose/project.rose\".data"
+          project: "C:/Users/erb/dev/rose/code/project.raddbg"
+          query: input: ""
+          cursor_line: 1
+          cursor_column: 1
+          mark_line: 1
+          mark_column: 1
+          cursor: 0x0
+          mark: 0x0
+        }
+        watch: expression: "query:breakpoints"
+        watch:
+        {
+          selected
+          expression: ""
+          normal: 0.218943 0.781057
+          watch_expression: expression: value
+        }
+      }
+      0.279258:
+      {
+        watch:
+        {
+          selected
+          expression: "query:call_stack"
+          call_stack_frame: 0.050000 0.689877 0.260123
+        }
+        watch: expression: "query:breakpoints"
+        watch: expression: "query:targets"
+      }
+    }
+  }
+  maximized
+}
+current_path: "C:/Users/erb/dev/rose/code"
+keybindings:
+{
+  { kill_all f5 shift }
+  { step_into_inst f11 alt }
+  { step_over_inst f10 alt }
+  { step_out f11 shift }
+  { halt x ctrl shift }
+  { halt pause }
+  { run f5 }
+  { restart f5 ctrl shift }
+  { step_into f11 }
+  { step_over f10 }
+  { run_to_line f10 ctrl }
+  { set_next_statement f10 ctrl shift }
+  { inc_window_font_size equal alt }
+  { dec_window_font_size minus alt }
+  { window n ctrl shift }
+  { new_panel_right h ctrl }
+  { new_panel_down h alt }
+  { rotate_panel_columns 2 ctrl }
+  { next_panel comma ctrl }
+  { prev_panel comma ctrl shift }
+  { focus_panel_right right ctrl alt }
+  { focus_panel_left left ctrl alt }
+  { focus_panel_up up ctrl alt }
+  { focus_panel_down down ctrl alt }
+  { undo z ctrl }
+  { redo y ctrl }
+  { go_back left alt }
+  { go_forward right alt }
+  { next_tab page_down ctrl }
+  { prev_tab page_up ctrl }
+  { next_tab tab ctrl }
+  { prev_tab tab ctrl shift }
+  { move_tab_right page_down ctrl shift }
+  { move_tab_left page_up ctrl shift }
+  { close_tab c alt }
+  { tab_bar_top up ctrl shift alt }
+  { tab_bar_bottom down ctrl shift alt }
+  { open_tab t ctrl }
+  { tab_settings t ctrl alt }
+  { open o ctrl }
+  { switch o alt }
+  { open_user n ctrl shift alt }
+  { open_user o ctrl shift alt }
+  { open_project o ctrl alt }
+  { save_user s ctrl shift alt }
+  { save_project s ctrl shift }
+  { edit f2 }
+  { accept return }
+  { accept space }
+  { cancel esc }
+  { focus_menu d alt }
+  { move_left b ctrl }
+  { move_right right }
+  { move_up up }
+  { move_down down }
+  { move_left_select left shift }
+  { move_right_select right shift }
+  { move_up_select up shift }
+  { move_down_select down shift }
+  { move_left_chunk b alt }
+  { move_right_chunk f alt }
+  { move_up_chunk up ctrl }
+  { move_down_chunk down ctrl }
+  { move_up_page page_up }
+  { move_down_page page_down }
+  { move_up_whole home ctrl }
+  { move_down_whole end ctrl }
+  { move_left_chunk_select b shift alt }
+  { move_right_chunk_select right ctrl shift }
+  { move_up_chunk_select up ctrl shift }
+  { move_down_chunk_select down ctrl shift }
+  { move_down_page_select page_down shift }
+  { move_up_whole_select home ctrl shift }
+  { move_down_whole_select end ctrl shift }
+  { move_up_reorder up alt }
+  { move_down_reorder down alt }
+  { move_home home }
+  { move_end end }
+  { move_home_select home shift }
+  { move_end_select end shift }
+  { delete_single delete }
+  { backspace_single backspace }
+  { backspace_chunk backspace ctrl }
+  { copy insert ctrl }
+  { cut w ctrl }
+  { paste y ctrl }
+  { paste insert shift }
+  { insert_text null }
+  { move_next tab }
+  { move_prev tab shift }
+  { goto_line g ctrl }
+  { goto_address g alt }
+  { search_backwards r ctrl }
+  { find_next f3 }
+  { find_prev f3 ctrl }
+  { find_selected_thread f4 }
+  { goto_name i alt }
+  { goto_name_at_cursor i ctrl }
+  { toggle_watch_pin f9 ctrl }
+  { toggle_breakpoint f9 }
+  { add_address_breakpoint f9 shift }
+  { add_function_breakpoint f9 ctrl shift }
+  { attach f6 shift }
+  { open_palette f1 }
+  { log_marker m ctrl shift alt }
+  { toggle_dev_menu d ctrl shift alt }
+  { move_right f ctrl }
+  { search s ctrl }
+  { move_up p ctrl }
+  { move_up_select p ctrl shift }
+  { move_up_chunk p alt }
+  { move_up_page v alt }
+  { move_down n ctrl }
+  { move_down_select n ctrl shift }
+  { move_down_chunk n alt }
+  { move_down_page n shift alt }
+  { copy w alt }
+  { move_end e ctrl }
+  { move_home a ctrl }
+  { move_home_select a ctrl shift }
+  { move_end_select e ctrl shift }
+  { move_up_reorder p ctrl alt }
+  { move_down_reorder n ctrl alt }
+  { paste v ctrl }
+  { move_up_page p shift alt }
+  { move_right_select f ctrl shift }
+  { edit l ctrl }
+  { delete_single d ctrl }
+  { select_all period ctrl }
+  { toggle_breakpoint i ctrl alt }
+  { run x ctrl }
+  { step_into m alt }
+  { step_over m ctrl }
+  { step_out m ctrl shift }
+  { restart q ctrl }
+  { kill_all q alt }
+  { run_command x alt }
+  { run_to_line m ctrl alt }
+  { toggle_watch_expr_at_cursor j ctrl }
+  { move_left left }
+  { move_right_chunk_select f shift alt }
+}
+file_path_map:
+{
+  source: "C:/Users/erb/dev/marker/code/marker_win32.c"
+  dest: "C:/Users/erb/dev/marker/code/win32_main.c"
+}
+breakpoint:
+{
+  project: "C:\\Users\\erb\\dev\\marengos-core/project.raddbg"
+  source_location: "../../marengos-core/engine/tools/headless_cli/main.cpp:151:1"
+  hit_count: 0
+}
+breakpoint:
+{
+  project: "C:\\Users\\erb\\dev\\marengos-core/project.raddbg"
+  source_location: "../../marengos-core/engine/src/world/world.cpp:166:9"
+  hit_count: 1
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/marengos-core/engine/build/bin/Debug/marengos_headless_cli.pdb"
+  timestamp: 66221310553539
+  project: "C:\\Users\\erb\\dev\\marengos-core/project.raddbg"
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/marengos-core/engine/build/bin/Debug/marengos_engined.pdb"
+  timestamp: 66221072949026
+  project: "C:\\Users\\erb\\dev\\marengos-core/project.raddbg"
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/4cc-mac/build/4ed.pdb"
+  timestamp: 66221701839544
+  project: "C:\\Users\\erb\\dev/4cc-mac/raddbg.project"
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/4cc-mac/build/4ed_app.pdb"
+  timestamp: 66221701838268
+  project: "C:\\Users\\erb\\dev/4cc-mac/raddbg.project"
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/4cc-mac/build/custom_4coder.pdb"
+  timestamp: 66221701837313
+  project: "C:\\Users\\erb\\dev/4cc-mac/raddbg.project"
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/4cc-mac/build/4ed.pdb"
+  timestamp: 66221738541640
+  project: "C:/Users/erb/dev/4cc-mac/project.raddbg"
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/4cc-mac/build/4ed_app.pdb"
+  timestamp: 66221738541013
+  project: "C:/Users/erb/dev/4cc-mac/project.raddbg"
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/4cc-mac/build/custom_4coder.pdb"
+  timestamp: 66221738540511
+  project: "C:/Users/erb/dev/4cc-mac/project.raddbg"
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/marker/code/build/win32_ui_main.pdb"
+  timestamp: 66221792777278
+  project: "C:/Users/erb/dev/marker/code/project.raddbg"
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/marker/code/build/win32_ui_app.pdb"
+  timestamp: 66221792777972
+  project: "C:/Users/erb/dev/marker/code/project.raddbg"
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/rose/code/build/win32_ui_main.pdb"
+  timestamp: 66225066936943
+  project: "C:/Users/erb/dev/rose/code/project.raddbg"
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/rose/code/build/win32_ui_app.pdb"
+  timestamp: 66225093006090
+  project: "C:/Users/erb/dev/rose/code/project.raddbg"
+}

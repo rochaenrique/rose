@@ -1,14 +1,15 @@
 #include "marker.c"
 #include "marker_ui.c"
 
-typedef struct App_Links
+typedef struct App_Links App_Links;
+struct App_Links
 {
   Arena permanent_arena;
   Arena transient_arena;
   UI_Ctx ui_ctx;
   
   Arena input_arena;
-  String_Builder input_builder;
+  String8_Builder input_builder;
   
   Debug_Info debug_info;
   F64 debug_update_timer;
@@ -16,8 +17,8 @@ typedef struct App_Links
   B32 is_initialized;
   
   Loaded_Image debug_image;
-  Image_Texture debug_texture;
-} App_Links;
+  Q2D_Image_Texture debug_texture;
+};
 
 void ui_push_mouse_cursor_helper(UI_Ctx *ctx)
 {
@@ -65,21 +66,21 @@ void debug_update_and_ui(App_Links *app, Input_State *input_state, Debug_Counter
     
     info->past = frame_debug_counters;
     
-    info->min.frame_time_ns = min(info->min.frame_time_ns, frame_debug_counters.frame_time_ns);
-    info->min.cycles = min(info->min.cycles, frame_debug_counters.cycles);
-    info->min.page_reclaims = min(info->min.page_reclaims, frame_debug_counters.page_reclaims);
-    info->min.page_faults = min(info->min.page_faults, frame_debug_counters.page_faults);
-    info->min.swaps = min(info->min.swaps, frame_debug_counters.swaps);
-    info->min.fs_input = min(info->min.fs_input, frame_debug_counters.fs_input);
-    info->min.fs_output = min(info->min.fs_output, frame_debug_counters.fs_output);
+    info->min.frame_time_ns = Min(info->min.frame_time_ns, frame_debug_counters.frame_time_ns);
+    info->min.cycles = Min(info->min.cycles, frame_debug_counters.cycles);
+    info->min.page_reclaims = Min(info->min.page_reclaims, frame_debug_counters.page_reclaims);
+    info->min.page_faults = Min(info->min.page_faults, frame_debug_counters.page_faults);
+    info->min.swaps = Min(info->min.swaps, frame_debug_counters.swaps);
+    info->min.fs_input = Min(info->min.fs_input, frame_debug_counters.fs_input);
+    info->min.fs_output = Min(info->min.fs_output, frame_debug_counters.fs_output);
     
-    info->max.frame_time_ns = max(info->max.frame_time_ns, frame_debug_counters.frame_time_ns);
-    info->max.cycles = max(info->max.cycles, frame_debug_counters.cycles);
-    info->max.page_reclaims = max(info->max.page_reclaims, frame_debug_counters.page_reclaims);
-    info->max.page_faults = max(info->max.page_faults, frame_debug_counters.page_faults);
-    info->max.swaps = max(info->max.swaps, frame_debug_counters.swaps);
-    info->max.fs_input = max(info->max.fs_input, frame_debug_counters.fs_input);
-    info->max.fs_output = max(info->max.fs_output, frame_debug_counters.fs_output);
+    info->max.frame_time_ns = Max(info->max.frame_time_ns, frame_debug_counters.frame_time_ns);
+    info->max.cycles = Max(info->max.cycles, frame_debug_counters.cycles);
+    info->max.page_reclaims = Max(info->max.page_reclaims, frame_debug_counters.page_reclaims);
+    info->max.page_faults = Max(info->max.page_faults, frame_debug_counters.page_faults);
+    info->max.swaps = Max(info->max.swaps, frame_debug_counters.swaps);
+    info->max.fs_input = Max(info->max.fs_input, frame_debug_counters.fs_input);
+    info->max.fs_output = Max(info->max.fs_output, frame_debug_counters.fs_output);
   }
   
   UI_Ctx *ui = &app->ui_ctx;
@@ -146,7 +147,7 @@ void debug_update_and_ui(App_Links *app, Input_State *input_state, Debug_Counter
       {
         ui_font_color(ui, v4f(0.53f, 0.12f, 0.18f, 1)) 
         {
-          ui_text(ui, S("Recording"));
+          ui_text(ui, S8("Recording"));
         }
       } break;
       
@@ -155,14 +156,14 @@ void debug_update_and_ui(App_Links *app, Input_State *input_state, Debug_Counter
         ui_push_mouse_cursor_helper(ui);
         ui_font_color(ui, v4f(0.1f, 0.69f, 0.16f, 1)) 
         {
-          ui_text(ui, S("Playing"));
+          ui_text(ui, S8("Playing"));
         }
       } break;
     }
     
     B32 has_down_event = false;
     for (U32 key_idx = 0;
-         key_idx < array_size(input_state->keys);
+         key_idx < ArraySize(input_state->keys);
          key_idx++)
     {
       Input_Button *key = (input_state->keys + key_idx);
@@ -179,16 +180,16 @@ void debug_update_and_ui(App_Links *app, Input_State *input_state, Debug_Counter
       ui_parent_zero(ui)
       {
         for (U32 key_idx = 0;
-             key_idx < array_size(input_state->keys);
+             key_idx < ArraySize(input_state->keys);
              key_idx++)
         {
           Input_Button *key = (input_state->keys + key_idx);
           if (key->ended_down)
           {
-            String str = push_cstr_copy(temp_arena, debug_key_code_cstr((Key_Code)key_idx));
+            String8 str = push_cstr_copy(temp_arena, debug_key_code_cstr((Key_Code)key_idx));
             ui_border_thickness(ui, 1.0f) ui_parent_flagged(ui, UIFlags_DrawBorder)
             {
-              ui_text(ui, str_postfix(str, S("KeyCode_").length));
+              ui_text(ui, str_postfix(str, S8("KeyCode_").length));
             }
           }
         }
@@ -198,7 +199,7 @@ void debug_update_and_ui(App_Links *app, Input_State *input_state, Debug_Counter
     
 #define ui_mod_label(label) \
 if (input_state->modifiers & ModifierFlags_##label) \
-ui_border_thickness(ui, 1.0f) ui_parent_flagged(ui, UIFlags_DrawBorder) ui_text(ui, S(#label))
+ui_border_thickness(ui, 1.0f) ui_parent_flagged(ui, UIFlags_DrawBorder) ui_text(ui, S8(#label))
     
     if (input_state->modifiers != ModifierFlags_None) 
     {
@@ -212,66 +213,6 @@ ui_border_thickness(ui, 1.0f) ui_parent_flagged(ui, UIFlags_DrawBorder) ui_text(
         ui_mod_label(Caps);
         ui_mod_label(NumLock);
       }
-    }
-  }
-}
-
-void render_ui_cmds(Render_Data *renderer, UI_Draw_Cmd_List draw_cmds)
-{
-  
-  for (UI_Draw_Cmd *cmd = draw_cmds.first;
-       cmd;
-       cmd = cmd->next)
-  {
-    switch (cmd->kind)
-    {
-      case UIDrawKind_Text:
-      {
-        render_text(renderer, 
-                    cmd->font, 
-                    cmd->content, 
-                    cmd->rect.top_left, 
-                    cmd->font_size, 
-                    cmd->spacing, 
-                    cmd->color);
-      } break;
-      
-      case UIDrawKind_Rect:
-      {
-        if (cmd->corner_radius == 0.0f)
-        {
-          render_rect(renderer,
-                      cmd->rect,
-                      cmd->color);
-        }
-        else
-        {
-          render_rect_rounded(renderer,
-                              cmd->rect,
-                              cmd->color,
-                              cmd->corner_radius);
-          
-        }
-      } break;
-      
-      case UIDrawKind_RectLines:
-      {
-        if (cmd->corner_radius == 0.0f)
-        {
-          render_rect_lines(renderer,
-                            cmd->rect,
-                            cmd->color,
-                            cmd->border_thickness);
-        }
-        else
-        {
-          render_rect_lines_rounded(renderer,
-                                    cmd->rect,
-                                    cmd->color,
-                                    cmd->corner_radius,
-                                    cmd->border_thickness);
-        }
-      } break;
     }
   }
 }
@@ -291,8 +232,8 @@ UPDATE_AND_RENDER(update_and_render)
                memory->transient_memory_size);
     
     ui_init(&app->ui_ctx, &app->permanent_arena);
-    app->input_arena = push_sub_arena(&app->permanent_arena, kb(8));
-    str_build_str(&app->input_arena, &app->input_builder, S("test text"));
+    app->input_arena = push_sub_arena(&app->permanent_arena, KB(8));
+    str_build_str(&app->input_arena, &app->input_builder, S8("test text"));
   }
   
   Font_Face face = {0};
@@ -315,12 +256,12 @@ UPDATE_AND_RENDER(update_and_render)
       ui_set_next_layout_axis(ui, Axis2_Y);
       ui_parent_zero(ui)
       {
-        ui_button(ui, S("hello"));
-        //ui_input(ui, &app->input_arena, &app->input_builder, input);
+        ui_buttonf(ui, S8("hello"));
+        //ui_line_input(ui, &app->input_arena, &app->input_builder, input);
       }
     }
     
-    render_ui_cmds(renderer, ui_calculate_and_draw(ui, &app->transient_arena));
+    render_ui_cmds(renderer, ui_layout_and_draw(ui, &app->transient_arena));
     ui_end_frame(ui);
   }
   
