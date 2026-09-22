@@ -3,57 +3,90 @@
 #ifndef EXPR_H
 #define EXPR_H
 
+typedef enum Expr_Binary_Kind
+{
+  ExprBinaryKind_Sum,
+  ExprBinaryKind_Mul,
+  ExprBinaryKind_Sub,
+  ExprBinaryKind_Div,
+  ExprBinaryKind_Mod,
+  
+  ExprBinaryKind_Eq,
+  ExprBinaryKind_Gt,
+  ExprBinaryKind_Ge,
+  ExprBinaryKind_Lt,
+  ExprBinaryKind_Le,
+  
+  ExprBinaryKind_BitAnd,
+  ExprBinaryKind_BitOr,
+  ExprBinaryKind_LogicAnd,
+  ExprBinaryKind_LogicOr,
+  
+  ExprBinaryKind_Access,
+  
+  ExprBinaryKind_COUNT,
+} Expr_Binary_Kind;
+
+typedef enum Expr_Primary_Kind
+{
+  ExprPrimaryKind_Identifier,
+  ExprPrimaryKind_NumLiteral,
+  ExprPrimaryKind_StrLiteral,
+} Expr_Primary_Kind;
+
 typedef enum Expr_Kind
 {
   ExprKind_None,
-  
-  ExprKind_BinarySum,
-  ExprKind_BinaryMul,
-  ExprKind_BinarySub,
-  ExprKind_BinaryDiv,
-  ExprKind_BinaryMod,
-  
-  ExprKind_BinaryEq,
-  ExprKind_BinaryGt,
-  ExprKind_BinaryGe,
-  ExprKind_BinaryLt,
-  ExprKind_BinaryLe,
-  
-  ExprKind_BinaryBitAnd,
-  ExprKind_BinaryBitOr,
-  ExprKind_BinaryLogicAnd,
-  ExprKind_BinaryLogicOr,
-  
-  ExprKind_BinaryAccess,
-  ExprKind_Identifier,
-  ExprKind_NumLiteral,
-  ExprKind_StrLiteral,
-  
+  ExprKind_Binary,
+  ExprKind_Primary,
   ExprKind_Function,
 } Expr_Kind;
 
 typedef struct Expr Expr;
-struct Expr
-{
-  Expr *prev;
-  Expr *next;
-  Expr *left;
-  Expr *right;
-  
-  Expr_Kind kind;
-  union
-  {
-    B32 b32;
-    U32 u32;
-    String8 str8;
-  };
-};
 
 typedef struct Expr_List Expr_List;
 struct Expr_List
 {
   Expr *first;
   Expr *last;
+  U32 count;
+};
+
+typedef struct Expr Expr;
+struct Expr
+{
+  Expr *next;
+  Expr *prev;
+  Expr *parent;
+  
+  Expr_Kind kind;
+  
+  union
+  {
+    struct
+    {
+      Expr_Binary_Kind kind;
+      Expr *left;
+      Expr *right;
+    } bin;
+    
+    struct
+    {
+      Expr_Primary_Kind kind;
+      union
+      {
+        B32 b32;
+        U32 u32;
+        String8 str8;
+      };
+    } prim;
+    
+    struct
+    {
+      String8 name;
+      Expr_List args;
+    } func;
+  };
 };
 
 #endif //EXPR_H

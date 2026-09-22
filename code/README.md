@@ -1,24 +1,28 @@
 # TODO
 
 ## Now
+ - Watch Window
+   - Tabs be watch window with set expr
+     - Maybe change views to be a "context for expr ui rule"
 
- - Generic views!!
-   - Eval Language
-       - Evaluatate date array or smth
-       - Date range literal `dt_rng(dt(), dt())`??
-   - Calendar -> Generic (with set expr)
-   - Tags -> Generic (with set expr)
-   - Lister -> Generic (with set expr)
-   - Table -> Generic (with set expr)
-   - NewEvent -> Generic (with set expr)
-   - Change columns to list of evaluations
-   - Add some kind of UI expansion rule? 
-   - Table & Lister -> join?
+ - Structured expression editor (ui?)
 
- - Cell lister
-   - lister view/panel to use cell lister
-   - popups to use cell lister
-     - Add a single popup in the UI state that "can" be the center
+ - eval filtering function
+
+ - show highlighted term when filtering lister
+   - Maybe the simplest api is: 
+   - ui_text_with_highlight(ui, text, highlight_range()) 
+     - function deals with showing the highlight
+     - no need for fancy strings or stuff
+
+   - DONE? (needs work)
+     - Lister
+     - NewEvent/FocusEvent
+     - Calendar
+
+ - popups to use cell lister
+   - Add a single popup in the UI state that "can" be the center
+   - CONTINUE CLEANUP
 
 ## Fixes
  - Make nill ui node
@@ -48,11 +52,21 @@
        - reference other events
      - Output some kind of expression tree
 
- - Structured filtering editor
  - Sorting & grouping
  - Searching everywhere
 
 ## App design ideas
+ - Very ergonomic quick add
+   - With some set defaults and quick to change
+   - Maybe have many quick-add templates and differend binds for each
+
+ - Extensibility/Customizablity
+   - Rose Expr Aliases / functions -> allow user to specify simple table-like aliases to functions or identifiers
+     - example1: "today" -> filter(events, now().date))
+     - example2: "overdue" -> filter(events, dt_range(min_time(), now().date))
+   - Rose Custom Commands / plugins -> allow user to link a dll (or package 'tcc' compiler) and add their own commands that will be treated as other commands in the app (with bindings and stuff)
+     - Also enables the user to add much more complex Rose Expr Aliases - directly in c code??
+
  - IMPORTANT:
    - By far my bigest problem with other calendar apps is reorganization. If I have a week almost packed out and suddenly I decide to move something I was meant to do today to later on, say the end of the week, then I have to manually reorganize every other event a bit forward. Also, small changes of a schedule make it really anoying because I have to reorder a bunch of stuff. This should all be automatic or at least MUCH more intuitive to do.
 
@@ -124,7 +138,6 @@
    - BAD: You're scaling bitmap glyphs to arbitrary sizes.
    - BAD: Your text isn't pixel aligned.
    - BAD: Your glyphs have no atlas padding.
-   - BAD: You're scaling bitmap glyphs to arbitrary sizes.
    - ?????Bake many font sizes in a single atlas????
    - Restrict api to 'em_per_pixel' and 'pixel_height' (is what a "loaded atlas means")
 

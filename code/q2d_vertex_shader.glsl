@@ -39,10 +39,20 @@ void main()
                            vec2(+1, +1));
   
   // NOTE(erb): top and bottom flipped in GL, causes diagonal flip?
-  vec4 corner_colors[] = vec4[](color_top_left,
+  /*
+  vec4 corner_colors[] = vec4[](
+                                color_top_left,
+                                color_bottom_left,
                                 color_bottom_right,
+                                color_top_right
+                                );
+*/
+  vec4 corner_colors[] = vec4[](
+                                color_top_left,
+                                color_bottom_left,
                                 color_top_right,
-                                color_bottom_left);
+                                color_bottom_right
+                                );
   
   vec2 dst_half_size = (dst_p1 - dst_p0)*0.5f;
   vec2 dst_center = (dst_p1 + dst_p0)*0.5f;

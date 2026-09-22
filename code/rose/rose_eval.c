@@ -1,296 +1,41 @@
 ///////////////////////////////////////////////////////////
-// NOTE(erb): expression evaluation
+// NOTE(erb): utils
 
-Expr_Value
-expression_value_from_event_expression(Arena *arena, Expr *expr, Event *event, String8 *error)
+Expr_Value *
+expr_value_list_append(Arena *arena, Expr_Value_List *list, Expr_Value *value)
 {
-  Scratch scratch = scratch_begin(&arena, 1);
-  Expr_Value result = {0};
-  if(expr == 0)
-  {
-    *error = S8("empty");
-  }
-  else
-  {
-    if(expr->left == 0 && expr->right == 0)
-    {
-      switch(expr->kind)
-      {
-        case ExprKind_Identifier:
-        {
-          if(str8_equals(expr->str8, S8("$")))
-          {
-            result.event = event;
-            result.type = ExprType_Event;
-          }
-          else
-          {
-            *error = S8("unkown global identifier");
-          }
-        } break;
-        
-        case ExprKind_NumLiteral:
-        {
-          result.u32 = expr->u32;
-          result.type = ExprType_U32;
-        } break;
-        
-        case ExprKind_StrLiteral:
-        {
-          result.str8 = expr->str8;
-          result.type = ExprType_Str8;
-        } break;
-        
-        InvalidDefaultCase;
-      }
-    }
-    else if(expr->left != 0 && expr->right != 0)
-    {
-      Assert(expression_kind_is_binary_op(expr->kind));
-      if(expr->kind == ExprKind_BinaryAccess)
-      {
-        String8 right_iden = {0};
-        if(expr->right->kind == ExprKind_Identifier)
-        {
-          right_iden = expr->right->str8;
-        }
-        else
-        {
-          *error = S8("expected an identifier at the right of '.'");
-        }
-        
-        Expr_Value left = {0};
-        if(error->value == 0)
-        {
-          left = expression_value_from_event_expression(scratch.arena, expr->left, event, error);
-        }
-        
-        if(error->value == 0)
-        {
-          switch(left.type)
-          {
-            case ExprType_Event:
-            {
-              if(str8_equals(right_iden, S8("name")))
-              {
-                result.str8 = str8_from_name_chunk_list(arena, &left.event->title_chunk_list);
-                result.type = ExprType_Str8;
-              }
-              else if(str8_equals(right_iden, S8("start")))
-              {
-                result.dt = left.event->start;
-                result.type = ExprType_DateTime;
-              }
-              else if(str8_equals(right_iden, S8("end")))
-              {
-                result.dt = left.event->end;
-                result.type = ExprType_DateTime;
-              }
-              else if(str8_equals(right_iden, S8("id")))
-              {
-                result.u32 = hash_from_event_id(left.event->id);
-                result.type = ExprType_U32;
-              }
-              else
-              {
-                *error = S8("unknown event access");
-              }
-            } break;
-            
-            case ExprType_DateTime:
-            {
-              if(str8_equals(right_iden, S8("day")))
-              {
-                result.u32 = left.dt.date.day;
-                result.type = ExprType_U32;
-              }
-              else if(str8_equals(right_iden, S8("year")))
-              {
-                result.u32 = left.dt.date.year;
-                result.type = ExprType_U32;
-              }
-              else if(str8_equals(right_iden, S8("month")))
-              {
-                result.u32 = left.dt.date.month;
-                result.type = ExprType_U32;
-              }
-              else
-              {
-                *error = S8("unkown date access");
-              }
-            } break;
-            
-            default:
-            {
-              *error = S8("only accessible types are event and date");
-            } break;
-          }
-        }
-      }
-      else
-      {
-        Expr_Value left = expression_value_from_event_expression(scratch.arena, expr->left, event, error);
-        Expr_Value right = expression_value_from_event_expression(scratch.arena, expr->right, event, error);
-        if(error->value == 0)
-        {
-          if(left.type == right.type)
-          {
-            B32 operands_type_valid = false;
-            switch(expr->kind)
-            {
-              case ExprKind_BinarySub:
-              {
-                operands_type_valid = (left.type == right.type && 
-                                       (left.type == ExprType_DateTime || left.type == ExprType_U32));
-                result.type = left.type;
-              } break;
-              
-              case ExprKind_BinaryMul:
-              case ExprKind_BinaryMod:
-              case ExprKind_BinaryDiv:
-              case ExprKind_BinarySum:
-              case ExprKind_BinaryBitAnd:
-              case ExprKind_BinaryBitOr:
-              {
-                operands_type_valid = (left.type == right.type && 
-                                       left.type == ExprType_U32); 
-                result.type = ExprType_U32;
-              } break;
-              
-              case ExprKind_BinaryEq:
-              case ExprKind_BinaryGt: case ExprKind_BinaryGe: 
-              case ExprKind_BinaryLt: case ExprKind_BinaryLe:
-              {
-                operands_type_valid = (left.type == right.type && 
-                                       (left.type == ExprType_DateTime || left.type == ExprType_U32));
-                result.type = ExprType_B32;
-              } break;
-              
-              case ExprKind_BinaryLogicOr:
-              case ExprKind_BinaryLogicAnd:
-              {
-                operands_type_valid = (left.type == right.type &&
-                                       (left.type == ExprType_Str8 || left.type == ExprType_B32 || left.type == ExprType_U32));
-                result.type = (left.type == ExprType_Str8) ? ExprType_Str8 : ExprType_B32;
-              } break;
-              
-              InvalidDefaultCase;
-            }
-            
-            if(operands_type_valid)
-            {
-              switch(result.type)
-              {
-                case ExprType_U32:
-                case ExprType_B32:
-                {
-                  switch(expr->kind)
-                  {
-                    case ExprKind_BinaryMod: result.u32 = left.u32 % right.u32; break;
-                    case ExprKind_BinaryMul: result.u32 = left.u32 * right.u32; break;
-                    case ExprKind_BinaryDiv: result.u32 = left.u32 / right.u32; break;
-                    case ExprKind_BinarySum: result.u32 = left.u32 + right.u32; break;
-                    case ExprKind_BinarySub: result.u32 = left.u32 - right.u32; break;
-                    
-                    case ExprKind_BinaryBitOr : result.u32 = left.u32 | right.u32; break;
-                    case ExprKind_BinaryBitAnd: result.u32 = left.u32 & right.u32; break;
-                    
-                    // NOTE(erb): implicit cast result
-                    case ExprKind_BinaryEq: result.b32 = left.u32 == right.u32; break;
-                    case ExprKind_BinaryGt: result.b32 = left.u32 >  right.u32; break;
-                    case ExprKind_BinaryGe: result.b32 = left.u32 >= right.u32; break;
-                    case ExprKind_BinaryLt: result.b32 = left.u32 <  right.u32; break;
-                    case ExprKind_BinaryLe: result.b32 = left.u32 <= right.u32; break;
-                    
-                    case ExprKind_BinaryLogicAnd: result.b32 = left.b32 && right.b32; break;
-                    case ExprKind_BinaryLogicOr: result.b32 = left.b32 || right.b32; break;
-                    
-                    InvalidDefaultCase;
-                  }
-                } break;
-                
-                case ExprType_Str8:
-                {
-                  switch(expr->kind)
-                  {
-                    case ExprKind_BinaryLogicAnd: 
-                    {
-                      result.str8 = push_str8_copy(arena, str8_longest_common_substring(left.str8, right.str8)); 
-                    } break;
-                    case ExprKind_BinaryLogicOr: 
-                    {
-                      result.str8 = str8_concat_no_postifx_overlap(arena, left.str8, right.str8); 
-                    } break;
-                    InvalidDefaultCase;
-                  }
-                } break;
-                
-                case ExprType_DateTime:
-                {
-                  I32 diff = (cal_date_to_days(left.dt.date) - cal_date_to_days(right.dt.date));
-                  switch(expr->kind)
-                  {
-                    case ExprKind_BinaryEq: result.b32 = diff == 0; break;
-                    case ExprKind_BinaryGt: result.b32 = diff >  0; break;
-                    case ExprKind_BinaryGe: result.b32 = diff >= 0; break;
-                    case ExprKind_BinaryLt: result.b32 = diff <  0; break;
-                    case ExprKind_BinaryLe: result.b32 = diff <= 0; break;
-                    
-                    case ExprKind_BinarySub: 
-                    {
-                      // NOTE(erb): autocast to date
-                      if(diff != 0)
-                      {
-                        result.dt.date = cal_date_from_days(diff);
-                      }
-                    } break;
-                    default:
-                    {
-                      *error = S8("invalid operands for date");
-                    } break;
-                  }
-                } break;
-              }
-            }
-            else
-            {
-              *error = S8("invalid operands for type");
-            }
-          }
-          else
-          {
-            *error = S8("invalid operand between types");
-          }
-        }
-      }
-    }
-    else InvalidCodePath;
-  }
-  scratch_end(&scratch);
-  return(result);
+  SLLQueueAppend(list->first, list->last, value);
+  list->count++;
+  return(value);
 }
 
-Expr_Value
-expression_value_from_str8(Arena *arena, String8 expr_str, Event *event, String8 *error)
+Expr_Value *
+expr_value_list_push(Arena *arena, Expr_Value_List *list)
 {
-  Scratch scratch = scratch_begin(&arena, 1);
-  Token_List tokens = token_list_from_str(scratch.arena, expr_str, error);
-  
-  Expr *expr = 0;
-  if(error->value == 0)
-  {
-    Token_Iterator token_it = {0};
-    token_it.current = tokens.first;
-    expr = expression_from_eat_token_list(scratch.arena, &token_it, error);
-  }
-  
-  Expr_Value value = {0};
-  if(error->value == 0)
-  {
-    value = expression_value_from_event_expression(arena, expr, event, error);
-  }
-  scratch_end(&scratch);
+  Expr_Value *value = PushStruct(arena, Expr_Value);
+  expr_value_list_append(arena, list, value);
   return(value);
+}
+
+Expr_Value expr_value_from_expr_with_environment(Arena *arena, Expr *expr, Expr_Environment *env, String8 *error);
+
+Expr_Value_List 
+expr_value_list_from_expr_list(Arena *arena, Expr_Environment *env, Expr_List *list, String8 *error)
+{
+  Assert(list != 0);
+  Expr_Value_List result = {0};
+  for(EachNode(Expr, arg_expr, list->first))
+  {
+    Expr_Value val = expr_value_from_expr_with_environment(arena, arg_expr, env, error);
+    if(error->value != 0)
+    {
+      break;
+    }
+    Expr_Value *store = PushStruct(arena, Expr_Value);
+    *store = val;
+    expr_value_list_append(arena, &result, store);
+  }
+  return(result);
 }
 
 ///////////////////////////////////////////////////////////
@@ -602,7 +347,7 @@ struct Date_Time_Parse
 };
 
 Date_Time_Parse
-date_time_from_tokens(Token_Iterator *it, Calendar_Date ref_date, String8 *error)
+parse_date_time_from_tokens(Token_Iterator *it, Calendar_Date ref_date, String8 *error)
 {
   I32 ref_date_days = cal_date_to_days(ref_date);
   
@@ -616,8 +361,11 @@ date_time_from_tokens(Token_Iterator *it, Calendar_Date ref_date, String8 *error
   // - 1 month before
   // - day after
   // - 2 weeks from
+  
   Time_Duration prefix_op = {0};
   B32 has_prefix_op = false;
+  // NOTE(erb): skip 'today' because it is scaned as "day" and makes the algo fail
+  if(!token_it_peek_is_iden_str8(it, S8("today")))
   {
     B32 failed = false;
     token_it_push_current_location(it);
@@ -1229,10 +977,25 @@ date_time_from_tokens(Token_Iterator *it, Calendar_Date ref_date, String8 *error
   return(result);
 }
 
-void
-update_date_time_range_from_tokens(Token_Iterator *it, Calendar_Date ref_date, Date_Time *start, Date_Time *end, String8 *error)
+typedef struct Time_Duration_Node Time_Duration_Node;
+struct Time_Duration_Node
 {
-  Scratch scratch = scratch_begin(0, 0);
+  Time_Duration op;
+  Time_Duration_Node *next;
+};
+
+typedef struct Date_Time_Range_Parse Date_Time_Range_Parse;
+struct Date_Time_Range_Parse
+{
+  Date_Time_Parse max_dt;
+  Date_Time_Parse min_dt;
+  B32 is_min_max;
+  Time_Duration_Node *first_duration_op;
+};
+
+Date_Time_Range_Parse
+parse_date_time_range_from_tokens(Arena *arena, Token_Iterator *it, Calendar_Date ref_date, String8 *error)
+{
   
   // NOTE(erb): date_range := min_and_max | start_and_duration
   // min_and_max = [from] date_time (to|until|-) date_time
@@ -1241,6 +1004,7 @@ update_date_time_range_from_tokens(Token_Iterator *it, Calendar_Date ref_date, D
   // - feb 18, 1988 - feb 29, 2024
   // - from tomorrow to last week of august
   // - next monday for 1 week
+  
   
   // NOTE(erb): [from]
   B32 is_min_max_range = false;
@@ -1253,7 +1017,7 @@ update_date_time_range_from_tokens(Token_Iterator *it, Calendar_Date ref_date, D
   Date_Time_Parse min_dt_parse = {0};
   if(error->value == 0)
   {
-    min_dt_parse = date_time_from_tokens(it, ref_date, error);
+    min_dt_parse = parse_date_time_from_tokens(it, ref_date, error);
   }
   
   // NOTE(erb): duration connector
@@ -1271,14 +1035,8 @@ update_date_time_range_from_tokens(Token_Iterator *it, Calendar_Date ref_date, D
     has_duration = match.exists;
   };
   
-  // NOTE(erb): duration
-  typedef struct Time_Duration_Node Time_Duration_Node;
-  struct Time_Duration_Node
-  {
-    Time_Duration op;
-    Time_Duration_Node *next;
-  };
   
+  // NOTE(erb): duration
   Time_Duration_Node *first_duration_op = 0;
   if(error->value == 0 && has_duration)
   {
@@ -1295,7 +1053,7 @@ update_date_time_range_from_tokens(Token_Iterator *it, Calendar_Date ref_date, D
       token_it_pop_or_restore_last_location(it, !has_op);
       if(has_op)
       {
-        Time_Duration_Node *node = PushStruct(scratch.arena, Time_Duration_Node);
+        Time_Duration_Node *node = PushStruct(arena, Time_Duration_Node);
         node->op = op;
         SLLStackPush(first_duration_op, node);
       }
@@ -1310,6 +1068,7 @@ update_date_time_range_from_tokens(Token_Iterator *it, Calendar_Date ref_date, D
       *error = S8("expected duration");
     }
   }
+  
   
   // NOTE(erb): range conector (for|until|-)
   if(error->value == 0)
@@ -1337,44 +1096,59 @@ update_date_time_range_from_tokens(Token_Iterator *it, Calendar_Date ref_date, D
   Date_Time_Parse max_dt_parse = {0};
   if(error->value == 0 && is_min_max_range)
   {
-    max_dt_parse = date_time_from_tokens(it, ref_date, error);
+    max_dt_parse = parse_date_time_from_tokens(it, ref_date, error);
   }
+  
+  Date_Time_Range_Parse result = {0};
+  result.is_min_max = is_min_max_range;
+  result.min_dt = min_dt_parse;
+  result.max_dt = max_dt_parse;
+  result.first_duration_op = first_duration_op;
+  return(result);
+}
+
+void
+update_parse_date_time_range_from_tokens(Token_Iterator *it, Calendar_Date ref_date, Date_Time *start, Date_Time *end, String8 *error)
+{
+  Scratch scratch = scratch_begin(0, 0);
+  
+  Date_Time_Range_Parse rng_parse = parse_date_time_range_from_tokens(scratch.arena, it, ref_date, error);
   
   if(error->value == 0)
   {
-    if(min_dt_parse.has_date)
+    if(rng_parse.min_dt.has_date)
     {
-      start->date = min_dt_parse.date_time.date;
+      start->date = rng_parse.min_dt.date_time.date;
     }
-    if(min_dt_parse.has_time)
+    if(rng_parse.min_dt.has_time)
     {
-      start->time = min_dt_parse.date_time.time;
+      start->time = rng_parse.min_dt.date_time.time;
     }
     
-    if(is_min_max_range)
+    if(rng_parse.is_min_max)
     {
-      if(max_dt_parse.has_date)
+      if(rng_parse.max_dt.has_date)
       {
-        end->date = max_dt_parse.date_time.date;
+        end->date = rng_parse.max_dt.date_time.date;
       }
-      if(max_dt_parse.has_time)
+      if(rng_parse.max_dt.has_time)
       {
-        end->time = max_dt_parse.date_time.time;
+        end->time = rng_parse.max_dt.date_time.time;
       }
       
-      if(!max_dt_parse.has_time && min_dt_parse.has_time)
+      if(!rng_parse.max_dt.has_time && rng_parse.min_dt.has_time)
       {
-        end->time = min_dt_parse.date_time.time;
+        end->time = rng_parse.min_dt.date_time.time;
       }
-      else if(max_dt_parse.has_time && !min_dt_parse.has_time)
+      else if(rng_parse.max_dt.has_time && !rng_parse.min_dt.has_time)
       {
-        start->time = max_dt_parse.date_time.time;
+        start->time = rng_parse.max_dt.date_time.time;
       }
     }
     else
     {
       *end = *start;
-      for(EachNode(Time_Duration_Node, node, first_duration_op))
+      for(EachNode(Time_Duration_Node, node, rng_parse.first_duration_op))
       {
         *end = date_time_add_duration(*end, node->op);
       }
@@ -1382,4 +1156,559 @@ update_date_time_range_from_tokens(Token_Iterator *it, Calendar_Date ref_date, D
   }
   
   scratch_end(&scratch);
+}
+
+///////////////////////////////////////////////////////////
+// NOTE(erb): builtin functions
+
+EXPR_FUNCTION_IMPL_FUNC(builtin_date_time_lit) // Arena *arena, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
+{
+  String8 error = {0};
+  Scratch scratch = scratch_begin(&arena, 1);
+  
+  Assert(arg_values != 0);
+  
+  if(arg_values->count != 1)
+  {
+    error = S8("expected a single argument");
+  }
+  
+  Expr_Value *arg = arg_values->first;
+  if(!(arg != 0 && arg->type == ExprType_Str8))
+  {
+    error = S8("expected string literal argument");
+  }
+  
+  Token_List tokens = {0};
+  if(error.value == 0)
+  {
+    tokens = token_list_from_str(scratch.arena, arg->str8, &error);
+  }
+  
+  Date_Time ref_date = os_get_local_date_time();
+  
+  Date_Time_Parse dt_parse = {0};
+  if(error.value == 0)
+  {
+    Token_Iterator token_it = {0};
+    token_it.current = tokens.first;
+    dt_parse = parse_date_time_from_tokens(&token_it, ref_date.date, &error);
+  }
+  
+  Expr_Func_Impl_Result result = {0};
+  result.error = error;
+  if(error.value == 0)
+  {
+    result.value.type = ExprType_DateTime;
+    result.value.dt.date = (dt_parse.has_date ? dt_parse.date_time.date : ref_date.date);
+    result.value.dt.time = dt_parse.date_time.time;
+  }
+  scratch_end(&scratch);
+  return(result);
+}
+
+EXPR_FUNCTION_IMPL_FUNC(builtin_time_series) // Arena *arena, Expr *expr, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
+{
+  String8 error = {0};
+  Scratch scratch = scratch_begin(&arena, 1);
+  
+  Assert(arg_values != 0);
+  
+  if(arg_values->count != 1)
+  {
+    error = S8("expected a single argument");
+  }
+  
+  Expr_Value *arg = arg_values->first;
+  if(!(arg != 0 && arg->type == ExprType_Str8))
+  {
+    error = S8("expected string literal argument");
+  }
+  
+  Token_List tokens = {0};
+  if(error.value == 0)
+  {
+    tokens = token_list_from_str(scratch.arena, arg->str8, &error);
+  }
+  
+  Calendar_Date ref_date = os_get_local_date_time().date;
+  
+  Date_Time_Range_Parse rng_parse = {0};
+  if(error.value == 0)
+  {
+    Token_Iterator token_it = {0};
+    token_it.current = tokens.first;
+    rng_parse = parse_date_time_range_from_tokens(arena, &token_it, ref_date, &error);
+  }
+  
+  // NOTE(erb): start
+  Date_Time start = {0};
+  if(error.value == 0)
+  {
+    if(rng_parse.min_dt.has_time)
+    {
+      start.time = rng_parse.min_dt.date_time.time;
+    }
+    
+    if(rng_parse.min_dt.has_date)
+    {
+      start.date = rng_parse.min_dt.date_time.date;
+    }
+    else
+    {
+      error = S8("expected start time");
+    }
+  }
+  
+  // NOTE(erb): end
+  Date_Time end = {0};
+  if(error.value == 0)
+  {
+    if(rng_parse.is_min_max)
+    {
+      if(rng_parse.max_dt.has_date)
+      {
+        end.date = rng_parse.max_dt.date_time.date;
+      }
+      if(rng_parse.max_dt.has_time)
+      {
+        end.time = rng_parse.max_dt.date_time.time;
+      }
+      
+      if(!rng_parse.max_dt.has_time && rng_parse.min_dt.has_time)
+      {
+        end.time = rng_parse.min_dt.date_time.time;
+      }
+      else if(rng_parse.max_dt.has_time && !rng_parse.min_dt.has_time)
+      {
+        start.time = rng_parse.max_dt.date_time.time;
+      }
+    }
+    else
+    {
+      end = start;
+      for(EachNode(Time_Duration_Node, node, rng_parse.first_duration_op))
+      {
+        end = date_time_add_duration(end, node->op);
+      }
+    }
+  }
+  
+  Expr_Func_Impl_Result result = {0};
+  result.error = error;
+  if(error.value == 0)
+  {
+    // NOTE(erb): default increment is days
+    Time_Duration duration_increment = {0};
+    duration_increment.value = 1;
+    duration_increment.kind = TimeDurationKind_Day;
+    
+    Expr_Value_List list = {0};
+    for(Date_Time dt = start;
+        !date_time_greater_equal(&dt, &end);
+        dt = date_time_add_duration(dt, duration_increment))
+    {
+      Expr_Value *v = expr_value_list_push(arena, &list);
+      v->type = ExprType_DateTime;
+      v->dt = dt;
+    }
+    
+    result.value.list = list;
+    result.value.sub_type = ExprType_DateTime;
+    result.value.type = ExprType_List;
+  }
+  
+  scratch_end(&scratch);
+  return(result);
+}
+
+///////////////////////////////////////////////////////////
+// NOTE(erb): expression evaluation
+
+Expr_Value
+expr_value_from_expr_with_environment(Arena *arena, Expr *expr,
+                                      Expr_Environment *environment,
+                                      String8 *error)
+{
+  Scratch scratch = scratch_begin(&arena, 1);
+  Expr_Value result = {0};
+  if(expr == 0)
+  {
+    *error = S8("empty");
+  }
+  else
+  {
+    switch(expr->kind)
+    {
+      case ExprKind_Binary:
+      {
+        if(expr->bin.kind == ExprBinaryKind_Access)
+        {
+          String8 right_iden = {0};
+          if(expr->bin.right->kind == ExprKind_Primary && 
+             expr->bin.right->prim.kind == ExprPrimaryKind_Identifier)
+          {
+            right_iden = expr->bin.right->prim.str8;
+          }
+          else
+          {
+            *error = S8("expected an identifier at the right of '.'");
+          }
+          
+          Expr_Value left = {0};
+          if(error->value == 0)
+          {
+            left = expr_value_from_expr_with_environment(scratch.arena, expr->bin.left, environment, error);
+          }
+          
+          if(error->value == 0)
+          {
+            switch(left.type)
+            {
+              case ExprType_Event:
+              {
+                if(str8_equals(right_iden, S8("name")))
+                {
+                  result.str8 = str8_from_name_chunk_list(arena, &left.event->title_chunk_list);
+                  result.type = ExprType_Str8;
+                }
+                else if(str8_equals(right_iden, S8("start")))
+                {
+                  result.dt = left.event->start;
+                  result.type = ExprType_DateTime;
+                }
+                else if(str8_equals(right_iden, S8("end")))
+                {
+                  result.dt = left.event->end;
+                  result.type = ExprType_DateTime;
+                }
+                else if(str8_equals(right_iden, S8("id")))
+                {
+                  result.u32 = hash_from_event_id(left.event->id);
+                  result.type = ExprType_U32;
+                }
+                else
+                {
+                  *error = S8("unknown event access");
+                }
+              } break;
+              
+              case ExprType_DateTime:
+              {
+                if(str8_equals(right_iden, S8("day")))
+                {
+                  result.u32 = left.dt.date.day;
+                  result.type = ExprType_U32;
+                }
+                else if(str8_equals(right_iden, S8("year")))
+                {
+                  result.u32 = left.dt.date.year;
+                  result.type = ExprType_U32;
+                }
+                else if(str8_equals(right_iden, S8("month")))
+                {
+                  result.u32 = left.dt.date.month;
+                  result.type = ExprType_U32;
+                }
+                else
+                {
+                  *error = S8("unkown date access");
+                }
+              } break;
+              
+              default:
+              {
+                *error = S8("only accessible types are event and date");
+              } break;
+            }
+          }
+        }
+        else
+        {
+          Expr_Value left = expr_value_from_expr_with_environment(scratch.arena, expr->bin.left, environment, error);
+          Expr_Value right = expr_value_from_expr_with_environment(scratch.arena, expr->bin.right, environment, error);
+          if(error->value == 0)
+          {
+            if(left.type == right.type)
+            {
+              B32 operands_type_valid = false;
+              switch(expr->bin.kind)
+              {
+                case ExprBinaryKind_Sub:
+                {
+                  operands_type_valid = (left.type == right.type && 
+                                         (left.type == ExprType_DateTime || left.type == ExprType_U32));
+                  result.type = left.type;
+                } break;
+                
+                case ExprBinaryKind_Mul:
+                case ExprBinaryKind_Mod:
+                case ExprBinaryKind_Div:
+                case ExprBinaryKind_Sum:
+                case ExprBinaryKind_BitAnd:
+                case ExprBinaryKind_BitOr:
+                {
+                  operands_type_valid = (left.type == right.type && 
+                                         left.type == ExprType_U32); 
+                  result.type = ExprType_U32;
+                } break;
+                
+                case ExprBinaryKind_Eq:
+                case ExprBinaryKind_Gt: case ExprBinaryKind_Ge: 
+                case ExprBinaryKind_Lt: case ExprBinaryKind_Le:
+                {
+                  operands_type_valid = (left.type == right.type && 
+                                         (left.type == ExprType_DateTime || left.type == ExprType_U32));
+                  result.type = ExprType_B32;
+                } break;
+                
+                case ExprBinaryKind_LogicOr:
+                case ExprBinaryKind_LogicAnd:
+                {
+                  operands_type_valid = (left.type == right.type &&
+                                         (left.type == ExprType_Str8 || left.type == ExprType_B32 || left.type == ExprType_U32));
+                  result.type = (left.type == ExprType_Str8) ? ExprType_Str8 : ExprType_B32;
+                } break;
+                
+                InvalidDefaultCase;
+              }
+              
+              if(operands_type_valid)
+              {
+                switch(result.type)
+                {
+                  case ExprType_U32:
+                  case ExprType_B32:
+                  {
+                    switch(expr->bin.kind)
+                    {
+                      case ExprBinaryKind_Mod: result.u32 = left.u32 % right.u32; break;
+                      case ExprBinaryKind_Mul: result.u32 = left.u32 * right.u32; break;
+                      case ExprBinaryKind_Div: result.u32 = left.u32 / right.u32; break;
+                      case ExprBinaryKind_Sum: result.u32 = left.u32 + right.u32; break;
+                      case ExprBinaryKind_Sub: result.u32 = left.u32 - right.u32; break;
+                      
+                      case ExprBinaryKind_BitOr : result.u32 = left.u32 | right.u32; break;
+                      case ExprBinaryKind_BitAnd: result.u32 = left.u32 & right.u32; break;
+                      
+                      // NOTE(erb): implicit cast result
+                      case ExprBinaryKind_Eq: result.b32 = left.u32 == right.u32; break;
+                      case ExprBinaryKind_Gt: result.b32 = left.u32 >  right.u32; break;
+                      case ExprBinaryKind_Ge: result.b32 = left.u32 >= right.u32; break;
+                      case ExprBinaryKind_Lt: result.b32 = left.u32 <  right.u32; break;
+                      case ExprBinaryKind_Le: result.b32 = left.u32 <= right.u32; break;
+                      
+                      case ExprBinaryKind_LogicAnd: result.b32 = left.b32 && right.b32; break;
+                      case ExprBinaryKind_LogicOr: result.b32 = left.b32 || right.b32; break;
+                      
+                      InvalidDefaultCase;
+                    }
+                  } break;
+                  
+                  case ExprType_Str8:
+                  {
+                    switch(expr->bin.kind)
+                    {
+                      case ExprBinaryKind_LogicAnd: 
+                      {
+                        result.str8 = push_str8_copy(arena, str8_longest_common_substring(left.str8, right.str8)); 
+                      } break;
+                      case ExprBinaryKind_LogicOr: 
+                      {
+                        result.str8 = str8_concat_no_postifx_overlap(arena, left.str8, right.str8); 
+                      } break;
+                      InvalidDefaultCase;
+                    }
+                  } break;
+                  
+                  case ExprType_DateTime:
+                  {
+                    I32 diff = (cal_date_to_days(left.dt.date) - cal_date_to_days(right.dt.date));
+                    switch(expr->bin.kind)
+                    {
+                      case ExprBinaryKind_Eq: result.b32 = diff == 0; break;
+                      case ExprBinaryKind_Gt: result.b32 = diff >  0; break;
+                      case ExprBinaryKind_Ge: result.b32 = diff >= 0; break;
+                      case ExprBinaryKind_Lt: result.b32 = diff <  0; break;
+                      case ExprBinaryKind_Le: result.b32 = diff <= 0; break;
+                      
+                      case ExprBinaryKind_Sub: 
+                      {
+                        // NOTE(erb): autocast to date
+                        if(diff != 0)
+                        {
+                          result.dt.date = cal_date_from_days(diff);
+                        }
+                      } break;
+                      default:
+                      {
+                        *error = S8("invalid operands for date");
+                      } break;
+                    }
+                  } break;
+                }
+              }
+              else
+              {
+                *error = S8("invalid operands for type");
+              }
+            }
+            else
+            {
+              *error = S8("invalid operand between types");
+            }
+          }
+        }
+      } break;
+      
+      case ExprKind_Primary:
+      {
+        switch(expr->prim.kind)
+        {
+          case ExprPrimaryKind_Identifier:
+          {
+            Expr_Variable *variable = 0;
+            for(EachNode(Expr_Variable, test, environment->first_var))
+            {
+              if(str8_equals(test->iden, expr->prim.str8))
+              {
+                variable = test;
+                break;
+              }
+            }
+            
+            if(variable != 0)
+            {
+              AssertImplies(variable->is_func, variable->func);
+              if(variable->is_func)
+              {
+                Expr_Value_List empty_arg_values = {0};
+                Expr_List empty_arg_exprs = {0};
+                
+                Expr_Func_Impl_Result func_result = variable->func(arena, environment, 
+                                                                   &empty_arg_values, &empty_arg_exprs);
+                *error = func_result.error;
+                result = func_result.value;
+              }
+              else
+              {
+                result = variable->value;
+              }
+            }
+            else
+            {
+              *error = S8("unkown global identifier");
+            }
+          } break;
+          
+          case ExprPrimaryKind_NumLiteral:
+          {
+            result.u32 = expr->prim.u32;
+            result.type = ExprType_U32;
+          } break;
+          
+          case ExprPrimaryKind_StrLiteral:
+          {
+            result.str8 = expr->prim.str8;
+            result.type = ExprType_Str8;
+          } break;
+          
+          InvalidDefaultCase;
+        }
+      } break;
+      
+      case ExprKind_Function:
+      {
+        Expr_Variable *variable = 0;
+        
+        // NOTE(erb): builtins
+        Expr_Variable builtin_funcs[] = 
+        {
+          {
+            .iden = S8Lit("dt"),
+            .is_func = true,
+            .func = builtin_date_time_lit,
+          },
+          {
+            .iden = S8Lit("dt_rng"),
+            .is_func = true,
+            .func = builtin_time_series
+          }
+        };
+        
+        for(EachElement(Expr_Variable, test, builtin_funcs))
+        {
+          if(str8_equals(test->iden, expr->func.name))
+          {
+            variable = test;
+            break;
+          }
+        }
+        
+        // NOTE(erb): externals
+        if(variable == 0)
+        {
+          for(EachNode(Expr_Variable, test, environment->first_var))
+          {
+            if(test->is_func && str8_equals(test->iden, expr->func.name))
+            {
+              variable = test;
+              break;
+            }
+          }
+        }
+        
+        if(variable != 0)
+        {
+          Assert(variable->is_func && variable->func);
+          
+          Expr_Value_List arg_values = {0};
+          if(!variable->only_expr_args)
+          {
+            arg_values = expr_value_list_from_expr_list(arena, environment, &expr->func.args, error);
+          }
+          
+          if(error->value == 0)
+          {
+            Expr_Func_Impl_Result func_result = variable->func(arena, environment, 
+                                                               &arg_values, &expr->func.args);
+            *error = func_result.error;
+            result = func_result.value;
+          }
+        }
+        else
+        {
+          *error = S8("unkown global identifier");
+        }
+      } break;
+      
+      InvalidDefaultCase;
+    }
+  }
+  scratch_end(&scratch);
+  return(result);
+}
+
+
+Expr_Value
+expr_value_from_str8_with_environment(Arena *arena, String8 expr_str, Expr_Environment *environment, String8 *error)
+{
+  Scratch scratch = scratch_begin(&arena, 1);
+  Token_List tokens = token_list_from_str(scratch.arena, expr_str, error);
+  
+  Expr *expr = 0;
+  if(error->value == 0)
+  {
+    Token_Iterator token_it = {0};
+    token_it.current = tokens.first;
+    expr = expr_from_token_it(scratch.arena, &token_it, error);
+  }
+  
+  Expr_Value value = {0};
+  if(error->value == 0)
+  {
+    value = expr_value_from_expr_with_environment(arena, expr, environment, error);
+  }
+  scratch_end(&scratch);
+  return(value);
 }

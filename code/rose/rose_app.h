@@ -42,6 +42,15 @@ struct View_ID
   U32 u32;
 };
 
+typedef struct Expr_State Expr_State;
+struct Expr_State
+{
+  UI_Line_Input_State input_state;
+  B32 is_editing;
+  B32 is_expanded;
+  Expr_State *next;
+};
+
 typedef struct View View;
 struct View
 {
@@ -65,8 +74,6 @@ struct View
     {
       Column columns[16];
       U32 column_count;
-      B32 has_column_popup;
-      V2f column_popup_pos;
     };
     struct
     {
@@ -80,7 +87,18 @@ struct View
     };
     struct
     {
-      String8_List expr_list;
+      Expr_State *first_free_expr_state;
+      Expr_State *first_expr_state;
+      Expr_State *last_expr_state;
+      U32 expr_state_count;
+      U32 expr_writer_buffer_size;
+      
+      UI_Line_Input_State test_line_input;
+      
+      I32 selection_cursor;
+      
+      Arena expr_state_arena;
+      U8 expr_state_buffer[512];
     };
   };
 };

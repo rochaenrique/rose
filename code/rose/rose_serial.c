@@ -410,8 +410,7 @@ srl_project_from_str(Arena *arena, String8 str)
               }
               if(error.value == 0)
               {
-                tag.color.rgb = rgb_from_packed_u32(value);
-                tag.color.a = 1.0f;
+                tag.color = rgba_from_packed_u32(value);
               }
             }
           }

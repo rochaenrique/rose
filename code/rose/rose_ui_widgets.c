@@ -2,7 +2,7 @@
 // NOTE(erb): fancy str
 
 Fancy_String8 *
-push_fancy_str8(Arena *arena, Fancy_String8_List *list, String8 str, V4f color)
+fancy_str8_push(Arena *arena, Fancy_String8_List *list, String8 str, V4f color)
 {
   Fancy_String8 *result = PushStruct(arena, Fancy_String8);
   result->str = str;
@@ -29,63 +29,12 @@ ui_fancy_str(UI_Ctx *ui, Fancy_String8_List fancy_strs)
 // NOTE(erb): color picker
 
 void
-ui_rng_i32_input(UI_Ctx *ui, I32 *value, Range_I32 range, String8 format)
-{
-  ui_set_next_align_x(ui, UIAlign_End);
-  UI_Node *node = ui_nodef(ui, 
-                           UIFlags_Comm|
-                           UIFlags_DrawBackGround|
-                           UIFlags_DrawRounded|
-                           UIFlags_DrawBorder, 
-                           S8("rng_u32_input_%p"), value);
-  ui_parent(ui, node)
-  {
-    ui_labelf(ui, format, *value);
-  }
-  
-  if(ui_comm_from_node(ui, node).left_dragging)
-  {
-    node->border_color = color_red;
-    F32 value_post = ((F32)(*value) + ui->input.cursor_delta.x);
-    value_post = Cap(value_post, (F32)range.min, (F32)range.max);
-    *value = (U32)floor_f32_to_i32(value_post);
-  }
-}
-
-void
-ui_v3i_input(UI_Ctx *ui, String8 label, V3i *value, Range_V3i range, String8 fmt1, String8 fmt2, String8 fmt3)
-{
-  ui_seed_key(ui, ui_keyf("v2i_input_%S_%b", label, value));
-  ui_set_next_sizing_x(ui, ui_grow());
-  ui_set_next_layout_axis(ui, Axis2_X);
-  ui_set_next_align_y(ui, UIAlign_Center);
-  ui_parentf(ui, 0, S8Z())
-  {
-    ui_set_next_font_size(ui, 19.0f);
-    ui_labelf(ui, label);
-    
-    ui_sizing_x(ui, ui_grow())
-    {
-      String8 fmt_arr[] = { fmt1, fmt2, fmt3 };
-      for(U32Each(idx, 3))
-      {
-        I32 *v = (value->c + idx);
-        Range_I32 rng = rng_i32(range.min.c[idx], range.max.c[idx]);
-        String8 fmt = fmt_arr[idx];
-        ui_rng_i32_input(ui, v, rng, fmt);
-      }
-    }
-  }
-  
-}
-
-void
 ui_color_picker(UI_Ctx *ui, V4f *color)
 {
   ui_set_next_sizing(ui, ui_fixed(400), ui_fixed(200));
   ui_set_next_layout_axis(ui, Axis2_X);
   ui_set_next_background_color(ui, with_alpha(v4ff(0.2f), 1.0f));
-  ui_set_next_border(ui, color_white, 1.0f, 0);
+  ui_set_next_border_abs(ui, color_white, 1.0f, 0);
   ui_set_next_padding(ui, pad2_equal(1));
   ui_parentf(ui, UIFlags_DrawBackGround|UIFlags_DrawBorder, S8Z())
   {
@@ -147,7 +96,7 @@ ui_color_picker_trigger(UI_Ctx *ui, B32 is_open, V4f color)
 {
   UI_Node *trigger = 0;
   ui_set_next_background_color(ui, color);
-  ui_border(ui, (is_open ? color_black : color_white), 1.0f, 1.0f)
+  ui_border_abs(ui, (is_open ? color_black : color_white), 1.0f, 1.0f)
   {
     trigger = ui_nodef(ui, 
                        UIFlags_DrawBackGround|
@@ -223,7 +172,7 @@ ui_date_picker_with_arrows(UI_Ctx *ui, UI_Key key, Calendar_Date date)
   ui_parentf(ui, 0, S8Z())
     ui_seed_key(ui, key)
   {
-    ui_set_next_border(ui, v4ff(0), 0, 0);
+    ui_set_next_border_abs(ui, v4ff(0), 0, 0);
     ui_set_next_background_color(ui, with_alpha(v4ff(0.1f), 1.0f));
     ui_set_next_padding(ui, pad2_xy(4.0f, 0));
     if(ui_buttonf(ui, S8("<##less_button_date")).left_clicked)
@@ -235,7 +184,7 @@ ui_date_picker_with_arrows(UI_Ctx *ui, UI_Key key, Calendar_Date date)
     ui_labelf(ui, S8("%u"), date.month);
     ui_labelf(ui, S8("%u"), date.year);
     
-    ui_set_next_border(ui, v4ff(0), 0, 0);
+    ui_set_next_border_abs(ui, v4ff(0), 0, 0);
     ui_set_next_background_color(ui, with_alpha(v4ff(0.1f), 1.0f));
     ui_set_next_padding(ui, pad2_xy(4.0f, 0));
     if(ui_buttonf(ui, S8(">##more_button_date")).left_clicked)
@@ -260,7 +209,7 @@ ui_time_picker_with_arrows(UI_Ctx *ui, UI_Key key, Clock_Time time)
   ui_parentf(ui, 0, S8Z())
     ui_seed_key(ui, key)
   {
-    ui_set_next_border(ui, v4ff(0), 0, 0);
+    ui_set_next_border_abs(ui, v4ff(0), 0, 0);
     ui_set_next_background_color(ui, with_alpha(v4ff(0.1f), 1.0f));
     ui_set_next_padding(ui, pad2_xy(4.0f, 0));
     if(ui_buttonf(ui, S8("<##less_button_time")).left_clicked)
@@ -271,7 +220,7 @@ ui_time_picker_with_arrows(UI_Ctx *ui, UI_Key key, Clock_Time time)
     ui_labelf(ui, S8("%02u"), time.hour);
     ui_labelf(ui, S8("%02u"), time.minute);
     
-    ui_set_next_border(ui, v4ff(0), 0, 0);
+    ui_set_next_border_abs(ui, v4ff(0), 0, 0);
     ui_set_next_background_color(ui, with_alpha(v4ff(0.1f), 1.0f));
     ui_set_next_padding(ui, pad2_xy(4.0f, 0));
     if(ui_buttonf(ui, S8(">##more_button_time")).left_clicked)
@@ -314,7 +263,7 @@ ui_date_time_range_picker(UI_Ctx *ui, Date_Input_State *state, Date_Time *start,
     UI_Node *time_col = 0;
     ui_sizing(ui, ui_grow(), ui_grow())
       ui_layout_axis(ui, Axis2_Y)
-      ui_border(ui, color_white, 1.0f, 0)
+      ui_border_abs(ui, color_white, 1.0f, 0)
       ui_padding(ui, pad2_xy(5.0f, 5.0f))
       ui_align_y(ui, UIAlign_Center)
     {
@@ -349,7 +298,7 @@ ui_date_time_range_picker(UI_Ctx *ui, Date_Input_State *state, Date_Time *start,
     
     // NOTE(erb): calendar
     ui_set_next_sizing_x(ui, ui_grow());
-    ui_set_next_border(ui, color_white, 1.0f, 0);
+    ui_set_next_border_abs(ui, color_white, 1.0f, 0);
     ui_set_next_layout_axis(ui, Axis2_Y);
     ui_parentf(ui, UIFlags_DrawBorder, S8Z())
     {
@@ -413,7 +362,7 @@ ui_date_time_range_picker(UI_Ctx *ui, Date_Input_State *state, Date_Time *start,
             
             ui_set_next_rect(ui, rng_v2f_point_add(cursor, cell_size));
             ui_set_next_background(ui, gradient);
-            ui_set_next_border(ui, v4ff(0), 0, 0);
+            ui_set_next_border_abs(ui, v4ff(0), 0, 0);
             UI_Node *day_node = ui_nodef(ui, 
                                          UIFlags_DrawBackGround|
                                          UIFlags_Floating|
@@ -505,7 +454,7 @@ ui_date_time_range_picker(UI_Ctx *ui, Date_Input_State *state, Date_Time *start,
     ui_set_next_debug_str(ui, S8("time series"));
     ui_set_next_sizing(ui, ui_grow(), ui_grow());
     ui_set_next_layout_axis(ui, Axis2_Y);
-    ui_set_next_border(ui, color_white, 1.0f, 0);
+    ui_set_next_border_abs(ui, color_white, 1.0f, 0);
     ui_set_next_padding(ui, pad2_xy(5.0f, 5.0f));
     ui_set_next_align_y(ui, UIAlign_Center);
     UI_Node *time_line_container = ui_nodef(ui, UIFlags_DrawBorder, S8("time_line"));
@@ -579,7 +528,7 @@ ui_date_time_line_input(UI_Ctx *ui, Date_Input_State *date_input_state, Date_Tim
       {
         Token_Iterator token_it = {0};
         token_it.current = tokens.first;
-        update_date_time_range_from_tokens(&token_it, dt_now.date, start, end, &date_input_state->last_error);
+        update_parse_date_time_range_from_tokens(&token_it, dt_now.date, start, end, &date_input_state->last_error);
       }
       
       scratch_end(&scratch);
@@ -595,7 +544,7 @@ ui_cell_lister_begin(UI_Ctx *ui, UI_Key key)
   ui_set_next_padding(ui, pad2_equal(2));
   ui_set_next_child_gap(ui, 0);
   ui_set_next_background_color(ui, v4f(0, 0, 0.5f, 1));
-  ui_set_next_border(ui, v4f(0.7f, 0.7f, 0.9f, 1), 2, 0);
+  ui_set_next_border_abs(ui, v4f(0.7f, 0.7f, 0.9f, 1), 2, 0);
   ui_set_next_debug_str(ui, S8("lister_container"));
   UI_Node *lister = ui_nodef(ui, 
                              UIFlags_DrawBackGround|
@@ -622,15 +571,18 @@ ui_cell_lister_input(UI_Ctx *ui, String8 label)
   ui_set_next_sizing_x(ui, ui_grow());
   ui_parentf(ui, 0, S8Z())
   {
-    ui_set_next_padding(ui, pad2_xy(4.0f, 0));
-    ui_set_next_background_color(ui, v4f(0, 0, 0.2f, 1));
-    ui_set_next_sizing_y(ui, ui_grow());
-    ui_set_next_align_y(ui, UIAlign_Center);
-    ui_parentf(ui, UIFlags_DrawBackGround, S8Z())
+    if(label.size > 0)
     {
-      ui_set_next_font_color(ui, with_alpha(v4ff(0.8f), 1.0f));
-      ui_set_next_font_size(ui, 24.0f);
-      ui_labelf(ui, label);
+      ui_set_next_padding(ui, pad2_xy(4.0f, 0));
+      ui_set_next_background_color(ui, v4f(0, 0, 0.2f, 1));
+      ui_set_next_sizing_y(ui, ui_grow());
+      ui_set_next_align_y(ui, UIAlign_Center);
+      ui_parentf(ui, UIFlags_DrawBackGround, S8Z())
+      {
+        ui_set_next_font_color(ui, with_alpha(v4ff(0.8f), 1.0f));
+        ui_set_next_font_size(ui, 24.0f);
+        ui_labelf(ui, label);
+      }
     }
     
     ui_set_next_border_color(ui, color_blank);
@@ -672,7 +624,7 @@ ui_cell_lister_scroll(UI_Ctx *ui, UI_Key scroll_key, F32 view_size, F32 list_tot
   // NOTE(erb): scroll bar
   ui_set_next_layout_axis(ui, Axis2_Y);
   ui_set_next_sizing(ui, ui_fit(), ui_grow());
-  ui_set_next_border(ui, v4f(0.7f, 0.7f, 0.9f, 1), 1, 0);
+  ui_set_next_border_abs(ui, v4f(0.7f, 0.7f, 0.9f, 1), 1, 0);
   ui_set_next_padding(ui, pad2_equal(1.0f));
   ui_set_next_child_gap(ui, 0);
   UI_Node *container = ui_nodef(ui, UIFlags_DrawBorder, S8("scroll_bar_outer"));
@@ -760,15 +712,159 @@ struct UI_Lister_Items_Result
   UI_Cell *selected;
 };
 
+B32
+ui_cell(UI_Ctx *ui, UI_Cell *cell, UI_Key key)
+{
+  AssertImplies(cell->flags & UICellFlags_DrawExpandArrowClose,
+                !(cell->flags & UICellFlags_DrawExpandArrowOpen));
+  AssertImplies(cell->flags & UICellFlags_DrawExpandArrowOpen,
+                !(cell->flags & UICellFlags_DrawExpandArrowClose));
+  
+  Scratch scratch = scratch_begin(0, 0);
+  
+  B32 more_space = (cell->flags & UICellFlags_MoreSpace);
+  F32 padding             = (more_space ?  7.0f :  4.0f);
+  F32 label_font_size     = (more_space ? 28.0f : 24.0f);
+  F32 sub_label_font_size = (more_space ? 21.0f : 15.0f);
+  
+  UI_Node *node = 0;
+  ui_background_color(ui, color_blank)
+  {
+    ui_set_next_border_abs(ui, v4f(0.7f, 0.7f, 0.9f, 1), 1.5f, 0);
+    ui_set_next_padding(ui, pad2_equal(padding));
+    ui_set_next_sizing_x(ui, ui_grow());
+    ui_set_next_layout_axis(ui, Axis2_X);
+    ui_set_next_align_y(ui, UIAlign_Center);
+    ui_set_next_child_gap(ui, 5.0f);
+    UI_Flags flags = (UIFlags_Comm|
+                      UIFlags_DrawBackGround|
+                      UIFlags_DrawBorder|
+                      UIFlags_DontSeedKey);
+    if(cell->flags & UICellFlags_Clickable)
+    {
+      flags |= UIFlags_HoverEffect;
+    }
+    node = ui_node_make(ui, flags, key, S8Z());
+  }
+  
+  ui_parent(ui, node)
+  {
+    // NOTE(erb): arrow
+    if((cell->flags & UICellFlags_DrawExpandArrowOpen) || 
+       (cell->flags & UICellFlags_DrawExpandArrowClose))
+    {
+      ui_set_next_font_color(ui, color_white);
+      ui_set_next_font_size(ui, label_font_size);
+      ui_labelf(ui, (cell->flags & UICellFlags_DrawExpandArrowOpen) ? S8("\\/") : S8(">"));
+    }
+    
+    B32 has_label_content = (cell->label.size > 0
+                             || ((cell->flags & UICellFlags_FancyStrLabel) && cell->label_fancy_str.first != 0) 
+                             || ((cell->flags & UICellFlags_DrawSubLabel) && cell->sub_label.size > 0));
+    if(has_label_content)
+    {
+      ui_set_next_sizing_x(ui, ui_grow());
+      ui_set_next_layout_axis(ui, Axis2_Y);
+      ui_parentf(ui, 0, S8Z())
+      {
+        // NOTE(erb): fancy str
+        if(cell->flags & UICellFlags_FancyStrLabel)
+        {
+          ui_fancy_str(ui, cell->label_fancy_str);
+        }
+        else // NOTE(erb): label
+        {
+          ui_set_next_font_color(ui, color_white);
+          ui_set_next_font_size(ui, label_font_size);
+          ui_labelf(ui, cell->label);
+        }
+        
+        // NOTE(erb): sub label
+        if(cell->flags & UICellFlags_DrawSubLabel)
+        {
+          ui_set_next_font_color(ui, with_alpha(v4ff(0.7f), 1.0f));
+          ui_set_next_font_size(ui, sub_label_font_size);
+          ui_labelf(ui, cell->sub_label);
+        }
+      }
+    }
+    
+    // NOTE(erb): key maps
+    if(cell->flags & UICellFlags_DrawKeyMaps)
+    {
+      Assert(cell->key_map != 0);
+      
+      ui_background_color(ui, with_alpha(v4ff(0.7f), 1))
+        ui_border_abs(ui, v4f(0.5f, 0.5f, 0.7f, 1), 1.0f, 2)
+        for(U32Each(combo_idx, cell->key_map->count))
+      {
+        Scratch combo_scratch = arena_get_scratch(scratch.arena);
+        Key_Combo *combo = (cell->key_map->combos + combo_idx);
+        
+        ui_parentf(ui, 
+                   UIFlags_DrawBackGround
+                   |UIFlags_DrawBorder
+                   |UIFlags_DrawRounded, S8Z())
+        {
+          if(combo->mods != 0)
+          {
+            ui_labelf(ui, S8("%S + %S"), 
+                      gfx_key_str8(combo->key), 
+                      gfx_modifiers_str8(combo_scratch.arena, combo->mods));
+          }
+          else
+          {
+            ui_labelf(ui, gfx_key_str8(combo->key));
+          }
+        }
+        
+        scratch_end(&combo_scratch);
+      }
+    }
+    
+    // NOTE(erb): line input
+    if(cell->flags & UICellFlags_LineInput)
+    {
+      ui_set_next_border_abs(ui, color_blank, 0, 0);
+      ui_line_input_update_state(ui, cell->line_input);
+    }
+    
+    // NOTE(erb): range input
+    if(cell->flags & UICellFlags_RangeInput)
+    {
+      ui_labelf(ui, S8("%.1f"), *cell->f32_out);
+      
+      ui_set_next_sizing_x(ui, ui_grow());
+      ui_rng_f32_slider(ui, cell->f32_out, cell->f32_rng);
+    }
+    
+    // NOTE(erb): boolean input
+    if(cell->flags & UICellFlags_BoolInput)
+    {
+      ui_set_next_sizing_y(ui, ui_grow());
+      ui_toggle_switch(ui, cell->b32_out);
+    }
+  }
+  
+  B32 selected = ((cell->flags & UICellFlags_Clickable) && 
+                  ui_comm_from_node(ui, node).left_clicked);
+  scratch_end(&scratch);
+  return(selected);
+}
+
 UI_Lister_Items_Result
-ui_cell_lister_items(UI_Ctx *ui, UI_Cell *cell_arr, U32 cell_count, String8 filter_str, F32 scroll_offset)
+ui_cell_lister_items(UI_Ctx *ui, UI_Cell *cell_arr, U32 cell_count, String8 filter_str, F32 scroll_offset, B32 should_shrink_y)
 {
   Scratch scratch = scratch_begin(0, 0);
   UI_Lister_Items_Result result = {0};
   
   ui_set_next_child_gap(ui, 0);
   ui_set_next_layout_axis(ui, Axis2_Y);
-  ui_set_next_sizing(ui, ui_grow(), ui_grow());
+  ui_set_next_sizing_x(ui, ui_grow());
+  if(!should_shrink_y)
+  {
+    ui_set_next_sizing_y(ui, ui_grow());
+  }
   ui_set_next_background_color(ui, color_blank);
   UI_Node *container = ui_nodef(ui, UIFlags_Comm|
                                 UIFlags_DrawBackGround|
@@ -783,9 +879,11 @@ ui_cell_lister_items(UI_Ctx *ui, UI_Cell *cell_arr, U32 cell_count, String8 filt
     if(container_comm.node != 0)
     {
       container_rng = node_rng_v2f(container_comm.node);
-      
-      items_wrapper_flags |= UIFlags_Floating;
-      ui_set_next_floating_pos(ui, container_rng.min);
+      if(!should_shrink_y)
+      {
+        items_wrapper_flags |= UIFlags_Floating;
+        ui_set_next_floating_pos(ui, container_rng.min);
+      }
     }
     if(container_comm.hovered)
     {
@@ -828,122 +926,16 @@ ui_cell_lister_items(UI_Ctx *ui, UI_Cell *cell_arr, U32 cell_count, String8 filt
       {
         // NOTE(erb): actual items
         UI_Cell *cell = (cell_arr + idx);
-        
-        B32 filtered = false;
-        if(cell->flags & UICellFlags_FancyStrLabel)
+        B32 show = (filter_str.size == 0 || str8_find(cell->filter_needle, filter_str, 0).exists);
+        if(show)
         {
-          // TODO(erb): check against fancy str
-          filtered = true;
-        }
-        else
-        {
-          filtered = (str8_find(cell->label, filter_str, 0).exists ||
-                      ((cell->flags & UICellFlags_DrawSubLabel) &&
-                       str8_find(cell->sub_label, filter_str, 0).exists));
-        }
-        
-        if(filtered)
-        {
-          B32 more_space = (cell->flags & UICellFlags_MoreSpace);
-          F32 padding             = (more_space ?  7.0f :  4.0f);
-          F32 label_font_size     = (more_space ? 28.0f : 24.0f);
-          F32 sub_label_font_size = (more_space ? 21.0f : 15.0f);
-          
-          ui_set_next_border(ui, v4f(0.7f, 0.7f, 0.9f, 1), 0.5f, 0);
-          ui_set_next_padding(ui, pad2_equal(padding));
-          ui_set_next_background_color(ui, color_blank);
-          ui_set_next_sizing_x(ui, ui_grow());
-          ui_set_next_layout_axis(ui, Axis2_X);
-          ui_set_next_align_y(ui, UIAlign_Center);
-          ui_set_next_child_gap(ui, 5.0f);
-          UI_Flags flags = (UIFlags_Comm|
-                            UIFlags_DrawBackGround|
-                            UIFlags_DrawBorder);
-          if(cell->flags & UICellFlags_Clickable)
-          {
-            flags |= UIFlags_HoverEffect;
-          }
-          if(is_first)
-          {
-            flags |= UIFlags_DontSeedKey;
-          }
           UI_Key key = (is_first ? first_item_key : ui_keyf("cell_item_lister_%p", cell));
-          is_first = false;
-          UI_Node *node = ui_node_make(ui, flags, key, S8Z());
-          
-          ui_parent(ui, node)
-          {
-            if(cell->flags & UICellFlags_DrawExpandArrow)
-            {
-              ui_set_next_font_color(ui, color_white);
-              ui_set_next_font_size(ui, label_font_size);
-              ui_labelf(ui, S8(">"));
-            }
-            
-            ui_set_next_sizing_x(ui, ui_grow());
-            ui_set_next_layout_axis(ui, Axis2_Y);
-            ui_parentf(ui, 0, S8Z())
-            {
-              // NOTE(erb): label
-              if(cell->flags & UICellFlags_FancyStrLabel)
-              {
-                ui_fancy_str(ui, cell->label_fancy_str);
-              }
-              else
-              {
-                ui_set_next_font_color(ui, color_white);
-                ui_set_next_font_size(ui, label_font_size);
-                ui_labelf(ui, cell->label);
-              }
-              
-              // NOTE(erb): sub label
-              if(cell->flags & UICellFlags_DrawSubLabel)
-              {
-                ui_set_next_font_color(ui, with_alpha(v4ff(0.7f), 1.0f));
-                ui_set_next_font_size(ui, sub_label_font_size);
-                ui_labelf(ui, cell->sub_label);
-              }
-            }
-            
-            if(cell->flags & UICellFlags_DrawKeyMaps)
-            {
-              Assert(cell->key_map != 0);
-              
-              ui_background_color(ui, with_alpha(v4ff(0.7f), 1))
-                ui_border(ui, v4f(0.5f, 0.5f, 0.7f, 1), 1.0f, 2)
-                for(U32Each(combo_idx, cell->key_map->count))
-              {
-                Scratch combo_scratch = arena_get_scratch(scratch.arena);
-                Key_Combo *combo = (cell->key_map->combos + combo_idx);
-                
-                ui_parentf(ui, 
-                           UIFlags_DrawBackGround
-                           |UIFlags_DrawBorder
-                           |UIFlags_DrawRounded, S8Z())
-                {
-                  if(combo->mods != 0)
-                  {
-                    ui_labelf(ui, S8("%S + %S"), 
-                              gfx_key_str8(combo->key), 
-                              gfx_modifiers_str8(combo_scratch.arena, combo->mods));
-                  }
-                  else
-                  {
-                    ui_labelf(ui, gfx_key_str8(combo->key));
-                  }
-                }
-                
-                scratch_end(&combo_scratch);
-              }
-            }
-          }
-          
-          UI_Comm comm =ui_comm_from_node(ui, node);
-          if((cell->flags & UICellFlags_Clickable) &&
-             comm.left_clicked)
+          B32 cell_selected = ui_cell(ui, cell, key);
+          if(cell_selected)
           {
             result.selected = cell;
           }
+          is_first = false;
         }
       }
       ui_spacer(ui, space_after);
@@ -955,13 +947,13 @@ ui_cell_lister_items(UI_Ctx *ui, UI_Cell *cell_arr, U32 cell_count, String8 filt
 }
 
 UI_Lister_Result
-ui_cell_lister(UI_Ctx *ui, String8 label, UI_Key key, UI_Cell *cell_arr, U32 cell_count)
+ui_cell_lister(UI_Ctx *ui, String8 search_label, UI_Key key, UI_Cell *cell_arr, U32 cell_count)
 {
   UI_Lister_Result result = {0};
   
   UI_Node *lister = ui_cell_lister_begin(ui, key);
   {
-    UI_Line_Input_State *input = ui_cell_lister_input(ui, label);
+    UI_Line_Input_State *input = ui_cell_lister_input(ui, search_label);
     result.input_str = input->writer.str;
     
     UI_Key scroll_key = ui_keyf("scroll_movable");
@@ -970,7 +962,8 @@ ui_cell_lister(UI_Ctx *ui, String8 label, UI_Key key, UI_Cell *cell_arr, U32 cel
     
     ui_cell_lister_content_begin(ui);
     UI_Lister_Items_Result items_result = ui_cell_lister_items(ui, cell_arr, cell_count, 
-                                                               result.input_str, scroll_offset);
+                                                               result.input_str, scroll_offset, 
+                                                               false);
     result.selected = items_result.selected;
     ui_cell_lister_scroll(ui, scroll_key, 
                           items_result.view_height, 
@@ -982,5 +975,51 @@ ui_cell_lister(UI_Ctx *ui, String8 label, UI_Key key, UI_Cell *cell_arr, U32 cel
   ui_cell_lister_end(ui);
   
   result.lister = lister;
+  return(result);
+}
+
+typedef struct UI_Lister_Popup_Result UI_Lister_Popup_Result;
+struct UI_Lister_Popup_Result
+{
+  B32 pressed_out;
+  UI_Lister_Result lister;
+};
+
+UI_Lister_Popup_Result
+ui_cell_lister_floating_popup(UI_Ctx *ui, V2f top_left, UI_Key key, UI_Cell *cell_arr, U32 cell_count, String8 search_label)
+{
+  ui_set_next_sizing_x(ui, ui_fixed(200));
+  ui_set_next_floating_pos(ui, top_left);
+  UI_Node *popup = ui_node_make(ui, UIFlags_Comm|UIFlags_Floating, key, S8Z());
+  
+  UI_Lister_Popup_Result result = {0};
+  ui_popup(ui, popup) 
+    ui_seed_key(ui, popup->key)
+    ui_border_abs(ui, v4ff(0), 0, 0)
+  {
+    UI_Key lister_key = ui_keyf("popup_lister_%llu", ui_hash_from_key(key));
+    
+    // NOTE(erb): Hack to achieve the desired event bubling. Because the lister collects the events (selections)
+    // on each cell, we collect the events for the popup before, so that at the end of the first interaction frame, 
+    // the correct 'active' node is a cell item and NOT the popup.
+    // 
+    // How it would work if we collected after: 
+    //  ``
+    //  result.lister = ui_cell_lister(ui, S8Z(), ui_keyf("tab_panel_popup"), cell_arr, ViewKind_COUNT);
+    //  result.pressed_out = (result.lister.selected == 0) && ui_comm_from_node(ui, popup).pressed_out;
+    //  ``
+    //  1. click on cell in the UI
+    //  2. ui_comm(cell) -> cell becomes hot -> cell becomes active
+    //  3. ui_comm(popup) -> popup becomes hot -> popup becomes active
+    //  4. release on cell in the UI
+    //  5. ui_comm(cell) -> cell becomes hot -> not active so nothing happens -> result.lister.selected will always be 0
+    //  6. ui_comm(popup) -> popup becomes hot -> popup is active from last frame -> produces pressed_out
+    //
+    // If we call ui_comm(popup) before then it works out as intented. 
+    
+    B32 pressed_out = ui_comm_from_node(ui, popup).pressed_out;
+    result.lister = ui_cell_lister(ui, S8Z(), lister_key, cell_arr, ViewKind_COUNT);
+    result.pressed_out = (pressed_out && result.lister.selected == 0);
+  }
   return(result);
 }

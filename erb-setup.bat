@@ -3,7 +3,7 @@ call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\v
 start "ROSE" "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat"
 
 pushd code
-start "raddbg_title" raddbg --project:"project.raddbg"
 start "4coder_title" 4ed -W
+start "raddbg_title" raddbg --project:"project.raddbg"
 popd
 

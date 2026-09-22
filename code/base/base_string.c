@@ -529,13 +529,20 @@ str8_try_to_U64(String8 str, U64 *value)
 // ////////////////////////////////////////////////////
 // NOTE(erb): string writer
 
+void
+str8_writer_init(String8_Writer *writer, U8 *buffer, U64 size)
+{
+  Assert(writer != 0);
+  writer->str.value = buffer;
+  writer->capacity = size;
+}
+
 String8_Writer
 push_str8_writer(Arena *arena, U64 size)
 {
   String8_Writer result = {0};
-  String8 buffer = push_str8(arena, size);
-  result.str.value = buffer.value;
-  result.capacity = buffer.size;
+  U8 *buff = PushArray(arena, size, U8);
+  str8_writer_init(&result, buff, size);
   return(result);
 }
 

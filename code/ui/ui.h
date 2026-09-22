@@ -185,6 +185,22 @@ union Padding2
   F32 c[4];
 };
 
+typedef enum UI_Radius_Kind
+{
+  UIRadiusKind_Absolute,
+  UIRadiusKind_PercentOfX,
+  UIRadiusKind_PercentOfY,
+  UIRadiusKind_PercentOfMax,
+  UIRadiusKind_PercentOfMin,
+} UI_Radius_Kind;
+
+typedef struct UI_Radius UI_Radius;
+struct UI_Radius
+{
+  F32 value;
+  UI_Radius_Kind kind;
+};
+
 typedef struct UI_Node UI_Node;
 struct UI_Node
 {
@@ -208,7 +224,7 @@ struct UI_Node
 	Padding2 padding;
 	V4f border_color;
 	F32 border_thickness;
-	F32 corner_radius;
+  UI_Radius corner_radius;
   F32 child_gap;
   Gradient2 background;
   F32 scroll_offset;
@@ -270,18 +286,17 @@ struct UI_Event_State
 typedef struct UI_Line_Input_State UI_Line_Input_State;
 struct UI_Line_Input_State
 {
-  U8 buffer[KB(1)];
+  UI_Key key;
   String8_Writer writer;
   
   F32 scroll_timer;
   F32 collected_scroll_x;
   Text_Edit_State edit_state;
   
-  UI_Key key;
-  UI_Line_Input_State *next;
-  
   U64 last_changed_frame;
   U64 created_frame;
+  
+  UI_Line_Input_State *next;
 };
 
 typedef struct UI_Ctx UI_Ctx;
@@ -310,8 +325,9 @@ struct UI_Ctx
 	UI_Node *root;
 	V2f root_pos;
 	U32 node_count;
-  UI_Node *center_popup;
-	
+  
+  UI_Node *popup;
+  
   // NOTE(erb): node cache
   UI_Node *node_cache[256];
   
@@ -345,7 +361,7 @@ UI_STACK_VALUE_SIZE(Value_Type, label, 16)
   UI_STACK_AND_NEXT_VALUE(F32, line_spacing);
   UI_STACK_AND_NEXT_VALUE(F32, child_gap);
   UI_STACK_AND_NEXT_VALUE(F32, border_thickness);
-  UI_STACK_AND_NEXT_VALUE(F32, corner_radius);
+  UI_STACK_AND_NEXT_VALUE(UI_Radius, corner_radius);
   UI_STACK_AND_NEXT_VALUE(V4f, font_color);
   UI_STACK_AND_NEXT_VALUE(V4f, border_color);
   UI_STACK_AND_NEXT_VALUE(Axis2, layout_axis);

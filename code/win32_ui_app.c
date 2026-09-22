@@ -177,6 +177,104 @@ save_state(App_State *app_state)
 }
 
 void
+ui_calendar(UI_Ctx *ui, Calendar_Date start_date, V2i grid_size, Range_V2f space, Event_List *event_list)
+{
+  Scratch scratch = scratch_begin(0, 0);
+  V2f space_size = rng_v2f_size(space);
+  
+  I32 color_space = (grid_size.y + grid_size.x);
+  V2f cell_size = v2f_hada_div(space_size, v2fi(grid_size));
+  V2f cell_cursor = space.min;
+  for(U32Each(y, (U32)grid_size.y))
+  {
+    cell_cursor.x = space.min.x;
+    for(U32Each(x, (U32)grid_size.x))
+    {
+      F32 t = (F32)(x+y)/color_space;
+      V4f color = v4f_lerp(color_red, color_blue, t);
+      
+      U32 cell_day_offset = (U32)grid_size.x*y + x;
+      Calendar_Date cell_date = cal_date_add_days(start_date, cell_day_offset);
+      
+      Range_V2f range = rng_v2f_point_add(cell_cursor, cell_size);
+      
+      // NOTE(erb): cell
+      ui_set_next_rect(ui, range);
+      ui_set_next_layout_axis(ui, Axis2_Y);
+      ui_set_next_background_color(ui, color);
+      ui_set_next_child_gap(ui, 0);
+      ui_set_next_padding(ui, pad2_equal(3));
+      UI_Node *day_cell = ui_nodef(ui, 
+                                   UIFlags_Floating|
+                                   UIFlags_DrawBackGround|
+                                   UIFlags_Comm|
+                                   UIFlags_DrawBorder, 
+                                   S8("calendar_day_%u_%u"), x, y);
+      if(ui_is_top_nav_interface(ui, day_cell->key))
+      {
+        day_cell->border_color = color_blue;
+        day_cell->border_thickness = 1.0f;
+      }
+      ui_parent(ui, day_cell)
+      {
+        
+        // NOTE(erb): date label
+        ui_set_next_debug_str(ui, S8("date-label"));
+        ui_sizing_y(ui, ui_fit())
+          ui_align_x(ui, UIAlign_End)
+          ui_padding(ui, pad2_xy(5, 0))
+          ui_parentf(ui, 0, S8Z())
+        {
+          ui_labelf(ui, S8("%u/%u"), cell_date.day, cell_date.month);
+        }
+        
+        ui_set_next_debug_str(ui, S8("event-list-container"));
+        ui_set_next_layout_axis(ui, Axis2_Y);
+        ui_parentf(ui, 0, S8Z())
+          ui_padding(ui, pad2_equal(0))
+          ui_font_size(ui, 18.0f)
+          ui_font_color(ui, color_black)
+          ui_padding(ui, pad2_xy(4.0f, 0))
+        {
+          // TODO(erb): make this filtering smarter!
+          for(EachNode(Event, event, event_list->first))
+          {
+            if(event->start.date.day   == cell_date.day &&
+               event->start.date.month == cell_date.month && 
+               event->start.date.year  == cell_date.year)
+            {
+              ui_set_next_debug_str(ui, S8(event));
+              ui_set_next_background_color(ui, v4f_xyz(v3ff(0.8f), 1.0f));
+              ui_set_next_sizing(ui, ui_grow(), ui_fit());
+              ui_set_next_corner_radius_abs(ui, 2.0f);
+              UI_Node *e = ui_nodef(ui, 
+                                    UIFlags_DrawBackGround
+                                    |UIFlags_DrawRounded
+                                    |UIFlags_Comm, 
+                                    S8("cal-event-%d"), event->id);
+              ui_parent(ui, e)
+              {
+                Scratch task_scratch = arena_get_scratch(scratch.arena);
+                String8 title = str8_from_name_chunk_list(task_scratch.arena, &event->title_chunk_list);
+                ui_labelf(ui, S8("%u %S"), hash_from_event_id(event->id), title);
+                if(ui_comm_from_node(ui, e).left_clicked)
+                {
+                  //app_state->selected_event_id = event->id;
+                }
+                scratch_end(&task_scratch);
+              }
+            }
+          }
+        }
+      }
+      cell_cursor.x += cell_size.x;
+    }
+    cell_cursor.y += cell_size.y;
+  }
+  scratch_end(&scratch);
+}
+
+void
 calendar_panel(App_State *app_state, View_ID id)
 {
   Assert(view_id_is_valid(id));
@@ -219,98 +317,7 @@ calendar_panel(App_State *app_state, View_ID id)
         view->calendar_grid_size.y = Cap(view->calendar_grid_size.y + scroll_size_delta.y, 1, 10);
         
         Range_V2f inner = node_inner_rng_v2f(out.node);
-        V2f inner_size = rng_v2f_size(inner);
-        
-        I32 color_space = (view->calendar_grid_size.y + view->calendar_grid_size.x);
-        V2f cell_size = v2f_hada_div(inner_size, v2fi(view->calendar_grid_size));
-        V2f cell_cursor = inner.min;
-        for(U32Each(y, (U32)view->calendar_grid_size.y))
-        {
-          cell_cursor.x = inner.min.x;
-          for(U32Each(x, (U32)view->calendar_grid_size.x))
-          {
-            F32 t = (F32)(x+y)/color_space;
-            V4f color = v4f_lerp(color_red, color_blue, t);
-            
-            U32 cell_day_offset = (U32)view->calendar_grid_size.x*y + x;
-            Calendar_Date cell_date = cal_date_add_days(view->calendar_start, cell_day_offset);
-            
-            Range_V2f range = rng_v2f_point_add(cell_cursor, cell_size);
-            
-            // NOTE(erb): cell
-            ui_set_next_rect(ui, range);
-            ui_set_next_layout_axis(ui, Axis2_Y);
-            ui_set_next_background_color(ui, color);
-            ui_set_next_child_gap(ui, 0);
-            ui_set_next_padding(ui, pad2_equal(3));
-            UI_Node *day_cell = ui_nodef(ui, 
-                                         UIFlags_Floating|
-                                         UIFlags_DrawBackGround|
-                                         UIFlags_Comm|
-                                         UIFlags_DrawBorder, 
-                                         S8("calendar_day_%u_%u"), x, y);
-            if(ui_is_top_nav_interface(ui, day_cell->key))
-            {
-              day_cell->border_color = color_blue;
-              day_cell->border_thickness = 1.0f;
-            }
-            ui_parent(ui, day_cell)
-            {
-              
-              // NOTE(erb): date label
-              ui_set_next_debug_str(ui, S8("date-label"));
-              ui_sizing_y(ui, ui_fit())
-                ui_align_x(ui, UIAlign_End)
-                ui_padding(ui, pad2_xy(5, 0))
-                ui_parentf(ui, 0, S8Z())
-              {
-                ui_labelf(ui, S8("%u/%u"), cell_date.day, cell_date.month);
-              }
-              
-              ui_set_next_debug_str(ui, S8("event-list-container"));
-              ui_set_next_layout_axis(ui, Axis2_Y);
-              ui_parentf(ui, 0, S8Z())
-                ui_padding(ui, pad2_equal(0))
-                ui_font_size(ui, 18.0f)
-                ui_font_color(ui, color_black)
-                ui_padding(ui, pad2_xy(4.0f, 0))
-              {
-                // TODO(erb): make this filtering smarter!
-                for(EachNode(Event, event, app_state->event_list.first))
-                {
-                  if(event->start.date.day   == cell_date.day &&
-                     event->start.date.month == cell_date.month && 
-                     event->start.date.year  == cell_date.year)
-                  {
-                    ui_set_next_debug_str(ui, S8(event));
-                    ui_set_next_background_color(ui, v4f_xyz(v3ff(0.8f), 1.0f));
-                    ui_set_next_sizing(ui, ui_grow(), ui_fit());
-                    ui_set_next_corner_radius(ui, 2.0f);
-                    UI_Node *e = ui_nodef(ui, 
-                                          UIFlags_DrawBackGround
-                                          |UIFlags_DrawRounded
-                                          |UIFlags_Comm, 
-                                          S8("cal-event-%d"), event->id);
-                    ui_parent(ui, e)
-                    {
-                      Scratch task_scratch = arena_get_scratch(scratch.arena);
-                      String8 title = str8_from_name_chunk_list(task_scratch.arena, &event->title_chunk_list);
-                      ui_labelf(ui, S8("%u %S"), hash_from_event_id(event->id), title);
-                      if(ui_comm_from_node(ui, e).left_clicked)
-                      {
-                        //app_state->selected_event_id = event->id;
-                      }
-                      scratch_end(&task_scratch);
-                    }
-                  }
-                }
-                
-              }
-            }
-            cell_cursor.x += cell_size.x;
-          }
-          cell_cursor.y += cell_size.y;
-        }
+        ui_calendar(ui, view->calendar_start, view->calendar_grid_size, inner, &app_state->event_list);
       }
     }
   }
@@ -351,581 +358,195 @@ table_cell_end(Table_Layout *layout, V2f cell_size)
   layout->max_row_height = Max(layout->max_row_height, cell_size.y);
 }
 
-void
-ui_expand_value(UI_Ctx *ui, Expr_Value *value, B32 is_error, U32 depth)
+typedef enum Expr_Cmd_Kind
 {
-  switch(value->type)
-  {
-    case ExprType_B32:
-    {
-      // TODO(erb): switch?
-      ui_set_next_font_color(ui, color_green);
-      ui_labelf(ui, (value->b32 ? S8("true") : S8("false")));
-    } break;
-    
-    case ExprType_U32: 
-    {
-      // TODO(erb): slider?
-      ui_set_next_font_color(ui, color_green);
-      ui_labelf(ui, S8("%u"), value->u32);
-    } break;
-    
-    case ExprType_Str8: 
-    {
-      ui_set_next_font_color(ui, (is_error ? color_red : color_white));
-      ui_labelf(ui, value->str8);
-    } break;
-    
-    case ExprType_DateTime: 
-    {
-      ui_set_next_font_color(ui, color_blue);
-      ui_labelf(ui, S8("%02u/%02u/%02u"), 
-                value->dt.date.day, value->dt.date.month, value->dt.date.year);
-    } break;
-    
-    case ExprType_Event:
-    {
-      Scratch scratch = scratch_begin(0, 0);
-      
-      Calendar_Date start = value->event->start.date;
-      Calendar_Date end = value->event->end.date;
-      String8 title = str8_from_name_chunk_list(scratch.arena, &value->event->title_chunk_list);
-      
-      ui_labelf(ui, S8("#%u %S %02u/%02u/%u - %02u/%02u/%u"), 
-                value->event->id,
-                title,
-                start.day, start.month, start.year,
-                end.day, end.month, end.year);
-      
-      scratch_end(&scratch);
-    } break;
-    
-    case ExprType_List:
-    {
-      ui_set_next_layout_axis(ui, Axis2_Y);
-      ui_parentf(ui, 0, S8Z())
-      {
-        for(EachNode(Expr_Value, v, value->list.first))
-        {
-          ui_spacer(ui, (F32)depth*5);
-          ui_expand_value(ui, v, false, depth+1);
-        }
-      }
-    } break;
-  }
-}
+  ExprCmdKind_Primary,
+  ExprCmdKind_BinaryBegin,
+  ExprCmdKind_BinaryOp,
+  ExprCmdKind_BinaryEnd,
+  ExprCmdKind_FunctionBegin,
+  ExprCmdKind_FunctionEnd,
+} Expr_Cmd_Kind;
 
-EXPR_FUNCTION_IMPL_FUNC(builtin_date_time_lit) // Arena *arena, Expr *expr, void *data
+typedef struct Expr_Cmd Expr_Cmd;
+struct Expr_Cmd
 {
-  String8 error = {0};
-  Scratch scratch = scratch_begin(&arena, 1);
-  
-  Expr *arg = expr->right;
-  if(arg == 0 || arg->kind != ExprKind_StrLiteral)
-  {
-    error = S8("expected string literal argument");
-  }
-  
-  Token_List tokens = {0};
-  if(error.value == 0)
-  {
-    tokens = token_list_from_str(scratch.arena, arg->str8, &error);
-  }
-  
-  Date_Time ref_date = os_get_local_date_time();
-  
-  Date_Time_Parse dt_parse = {0};
-  if(error.value == 0)
-  {
-    Token_Iterator token_it = {0};
-    token_it.current = tokens.first;
-    dt_parse = date_time_from_tokens(&token_it, ref_date.date, &error);
-  }
-  
-  Expr_Value result = {0};
-  if(error.value == 0)
-  {
-    result.type = ExprType_DateTime;
-    result.dt.date = (dt_parse.has_date ? dt_parse.date_time.date : ref_date.date);
-    result.dt.time = dt_parse.date_time.time;
-  }
-  // TODO(erb): return error reporting
-  scratch_end(&scratch);
-  return(result);
-}
+  Expr_Cmd_Kind kind;
+  Expr *expr;
+  Expr_Cmd *next;
+};
 
-// TODO(erb): global functions table
-Expr_Value
-expression_value_from_expr_with_environment(Arena *arena, Expr *expr,
-                                            Expr_Environment *environment,
-                                            String8 *error)
+typedef struct Expr_Cmd_List Expr_Cmd_List;
+struct Expr_Cmd_List
 {
-  Scratch scratch = scratch_begin(&arena, 1);
-  Expr_Value result = {0};
-  if(expr == 0)
-  {
-    *error = S8("empty");
-  }
-  else
-  {
-    if(expr->kind == ExprKind_Function)
-    {
-      Expr_Variable *variable = 0;
-      
-      // NOTE(erb): builtins
-      Expr_Variable builtin_funcs[] = 
-      {
-        {
-          .iden = S8Lit("dt"),
-          .is_func = true,
-          .func = builtin_date_time_lit,
-        },
-      };
-      
-      for(EachElement(Expr_Variable, test, builtin_funcs))
-      {
-        if(str8_equals(test->iden, expr->str8))
-        {
-          variable = test;
-          break;
-        }
-      }
-      
-      // NOTE(erb): externals
-      if(variable == 0)
-      {
-        for(U32Each(idx, environment->var_count))
-        {
-          Expr_Variable *test = (environment->var_arr + idx);
-          if(str8_equals(test->iden, expr->str8))
-          {
-            variable = test;
-            break;
-          }
-        }
-      }
-      
-      if(variable != 0)
-      {
-        Assert(variable->is_func && variable->func);
-        result = variable->func(arena, expr, environment->data);
-      }
-      else
-      {
-        *error = S8("unkown global identifier");
-      }
-      
-    }
-    else if(expr->left == 0 && expr->right == 0)
-    {
-      switch(expr->kind)
-      {
-        case ExprKind_Identifier:
-        {
-          Expr_Variable *variable = 0;
-          for(U32Each(idx, environment->var_count))
-          {
-            Expr_Variable *test = (environment->var_arr + idx);
-            if(str8_equals(test->iden, expr->str8))
-            {
-              variable = test;
-              break;
-            }
-          }
-          
-          if(variable != 0)
-          {
-            AssertImplies(variable->is_func, variable->func);
-            if(variable->is_func)
-            {
-              result = variable->func(arena, expr, environment->data);
-            }
-            else
-            {
-              result = variable->value;
-            }
-          }
-          else
-          {
-            *error = S8("unkown global identifier");
-          }
-        } break;
-        
-        case ExprKind_NumLiteral:
-        {
-          result.u32 = expr->u32;
-          result.type = ExprType_U32;
-        } break;
-        
-        case ExprKind_StrLiteral:
-        {
-          result.str8 = expr->str8;
-          result.type = ExprType_Str8;
-        } break;
-        
-        InvalidDefaultCase;
-      }
-    }
-    else if(expr->left != 0 && expr->right != 0)
-    {
-      Assert(expression_kind_is_binary_op(expr->kind));
-      if(expr->kind == ExprKind_BinaryAccess)
-      {
-        String8 right_iden = {0};
-        if(expr->right->kind == ExprKind_Identifier)
-        {
-          right_iden = expr->right->str8;
-        }
-        else
-        {
-          *error = S8("expected an identifier at the right of '.'");
-        }
-        
-        Expr_Value left = {0};
-        if(error->value == 0)
-        {
-          left = expression_value_from_expr_with_environment(scratch.arena, expr->left, environment, error);
-        }
-        
-        if(error->value == 0)
-        {
-          switch(left.type)
-          {
-            case ExprType_Event:
-            {
-              if(str8_equals(right_iden, S8("name")))
-              {
-                result.str8 = str8_from_name_chunk_list(arena, &left.event->title_chunk_list);
-                result.type = ExprType_Str8;
-              }
-              else if(str8_equals(right_iden, S8("start")))
-              {
-                result.dt = left.event->start;
-                result.type = ExprType_DateTime;
-              }
-              else if(str8_equals(right_iden, S8("end")))
-              {
-                result.dt = left.event->end;
-                result.type = ExprType_DateTime;
-              }
-              else if(str8_equals(right_iden, S8("id")))
-              {
-                result.u32 = hash_from_event_id(left.event->id);
-                result.type = ExprType_U32;
-              }
-              else
-              {
-                *error = S8("unknown event access");
-              }
-            } break;
-            
-            case ExprType_DateTime:
-            {
-              if(str8_equals(right_iden, S8("day")))
-              {
-                result.u32 = left.dt.date.day;
-                result.type = ExprType_U32;
-              }
-              else if(str8_equals(right_iden, S8("year")))
-              {
-                result.u32 = left.dt.date.year;
-                result.type = ExprType_U32;
-              }
-              else if(str8_equals(right_iden, S8("month")))
-              {
-                result.u32 = left.dt.date.month;
-                result.type = ExprType_U32;
-              }
-              else
-              {
-                *error = S8("unkown date access");
-              }
-            } break;
-            
-            default:
-            {
-              *error = S8("only accessible types are event and date");
-            } break;
-          }
-        }
-      }
-      else
-      {
-        Expr_Value left = expression_value_from_expr_with_environment(scratch.arena, expr->left, environment, error);
-        Expr_Value right = expression_value_from_expr_with_environment(scratch.arena, expr->right, environment, error);
-        if(error->value == 0)
-        {
-          if(left.type == right.type)
-          {
-            B32 operands_type_valid = false;
-            switch(expr->kind)
-            {
-              case ExprKind_BinarySub:
-              {
-                operands_type_valid = (left.type == right.type && 
-                                       (left.type == ExprType_DateTime || left.type == ExprType_U32));
-                result.type = left.type;
-              } break;
-              
-              case ExprKind_BinaryMul:
-              case ExprKind_BinaryMod:
-              case ExprKind_BinaryDiv:
-              case ExprKind_BinarySum:
-              case ExprKind_BinaryBitAnd:
-              case ExprKind_BinaryBitOr:
-              {
-                operands_type_valid = (left.type == right.type && 
-                                       left.type == ExprType_U32); 
-                result.type = ExprType_U32;
-              } break;
-              
-              case ExprKind_BinaryEq:
-              case ExprKind_BinaryGt: case ExprKind_BinaryGe: 
-              case ExprKind_BinaryLt: case ExprKind_BinaryLe:
-              {
-                operands_type_valid = (left.type == right.type && 
-                                       (left.type == ExprType_DateTime || left.type == ExprType_U32));
-                result.type = ExprType_B32;
-              } break;
-              
-              case ExprKind_BinaryLogicOr:
-              case ExprKind_BinaryLogicAnd:
-              {
-                operands_type_valid = (left.type == right.type &&
-                                       (left.type == ExprType_Str8 || left.type == ExprType_B32 || left.type == ExprType_U32));
-                result.type = (left.type == ExprType_Str8) ? ExprType_Str8 : ExprType_B32;
-              } break;
-              
-              InvalidDefaultCase;
-            }
-            
-            if(operands_type_valid)
-            {
-              switch(result.type)
-              {
-                case ExprType_U32:
-                case ExprType_B32:
-                {
-                  switch(expr->kind)
-                  {
-                    case ExprKind_BinaryMod: result.u32 = left.u32 % right.u32; break;
-                    case ExprKind_BinaryMul: result.u32 = left.u32 * right.u32; break;
-                    case ExprKind_BinaryDiv: result.u32 = left.u32 / right.u32; break;
-                    case ExprKind_BinarySum: result.u32 = left.u32 + right.u32; break;
-                    case ExprKind_BinarySub: result.u32 = left.u32 - right.u32; break;
-                    
-                    case ExprKind_BinaryBitOr : result.u32 = left.u32 | right.u32; break;
-                    case ExprKind_BinaryBitAnd: result.u32 = left.u32 & right.u32; break;
-                    
-                    // NOTE(erb): implicit cast result
-                    case ExprKind_BinaryEq: result.b32 = left.u32 == right.u32; break;
-                    case ExprKind_BinaryGt: result.b32 = left.u32 >  right.u32; break;
-                    case ExprKind_BinaryGe: result.b32 = left.u32 >= right.u32; break;
-                    case ExprKind_BinaryLt: result.b32 = left.u32 <  right.u32; break;
-                    case ExprKind_BinaryLe: result.b32 = left.u32 <= right.u32; break;
-                    
-                    case ExprKind_BinaryLogicAnd: result.b32 = left.b32 && right.b32; break;
-                    case ExprKind_BinaryLogicOr: result.b32 = left.b32 || right.b32; break;
-                    
-                    InvalidDefaultCase;
-                  }
-                } break;
-                
-                case ExprType_Str8:
-                {
-                  switch(expr->kind)
-                  {
-                    case ExprKind_BinaryLogicAnd: 
-                    {
-                      result.str8 = push_str8_copy(arena, str8_longest_common_substring(left.str8, right.str8)); 
-                    } break;
-                    case ExprKind_BinaryLogicOr: 
-                    {
-                      result.str8 = str8_concat_no_postifx_overlap(arena, left.str8, right.str8); 
-                    } break;
-                    InvalidDefaultCase;
-                  }
-                } break;
-                
-                case ExprType_DateTime:
-                {
-                  I32 diff = (cal_date_to_days(left.dt.date) - cal_date_to_days(right.dt.date));
-                  switch(expr->kind)
-                  {
-                    case ExprKind_BinaryEq: result.b32 = diff == 0; break;
-                    case ExprKind_BinaryGt: result.b32 = diff >  0; break;
-                    case ExprKind_BinaryGe: result.b32 = diff >= 0; break;
-                    case ExprKind_BinaryLt: result.b32 = diff <  0; break;
-                    case ExprKind_BinaryLe: result.b32 = diff <= 0; break;
-                    
-                    case ExprKind_BinarySub: 
-                    {
-                      // NOTE(erb): autocast to date
-                      if(diff != 0)
-                      {
-                        result.dt.date = cal_date_from_days(diff);
-                      }
-                    } break;
-                    default:
-                    {
-                      *error = S8("invalid operands for date");
-                    } break;
-                  }
-                } break;
-              }
-            }
-            else
-            {
-              *error = S8("invalid operands for type");
-            }
-          }
-          else
-          {
-            *error = S8("invalid operand between types");
-          }
-        }
-      }
-    }
-    else InvalidCodePath;
-  }
-  scratch_end(&scratch);
-  return(result);
-}
+  Expr_Cmd *first;
+  Expr_Cmd *last;
+};
 
-Expr_Value
-expression_value_from_str8_event_list(Arena *arena, String8 expr_str, Expr_Environment *environment, String8 *error)
+Expr_Cmd *
+expr_append_cmd(Arena *arena, Expr_Cmd_List *list, Expr *expr, Expr_Cmd_Kind kind)
 {
-  Scratch scratch = scratch_begin(&arena, 1);
-  Token_List tokens = token_list_from_str(scratch.arena, expr_str, error);
-  
-  Expr *expr = 0;
-  if(error->value == 0)
-  {
-    Token_Iterator token_it = {0};
-    token_it.current = tokens.first;
-    expr = expression_from_eat_token_list(scratch.arena, &token_it, error);
-  }
-  
-  Expr_Value value = {0};
-  if(error->value == 0)
-  {
-    value = expression_value_from_expr_with_environment(arena, expr, environment, error);
-  }
-  scratch_end(&scratch);
-  return(value);
+  Expr_Cmd *cmd = PushStruct(arena, Expr_Cmd);
+  SLLQueueAppend(list->first, list->last, cmd);
+  cmd->kind = kind;
+  cmd->expr = expr;
+  return(cmd);
 }
 
 void
-append_fancy_str_from_expr(Arena *arena, Fancy_String8_List *list, Expr *expr)
+expr_append_cmd_from_expr(Arena *arena, Expr_Cmd_List *list, Expr *node)
 {
-  if(expr != 0)
+  if(node != 0)
   {
-    if(expr->kind == ExprKind_Function)
+    switch(node->kind)
     {
-      push_fancy_str8(arena, list, expr->str8, color_red);
-      push_fancy_str8(arena, list, S8("("), color_white);
-      for(EachNode(Expr, arg, expr->right))
+      case ExprKind_Primary:
       {
-        append_fancy_str_from_expr(arena, list, arg);
-      }
-      push_fancy_str8(arena, list, S8(")"), color_white);
-    }
-    else if(expr->left == 0 && expr->right == 0)
-    {
-      String8 str = {0};
-      V4f color = {0};
-      switch(expr->kind)
+        expr_append_cmd(arena, list, node, ExprCmdKind_Primary);
+      } break;
+      
+      case ExprKind_Binary:
       {
-        case ExprKind_Identifier: 
+        expr_append_cmd(arena, list, node, ExprCmdKind_BinaryBegin);
         {
-          color = color_blue; 
-          str = expr->str8;
-        } break;
-        
-        case ExprKind_NumLiteral: 
-        {
-          color = color_green; 
-          str = push_str8f(arena, "%u", expr->u32);
-        } break;
-        
-        case ExprKind_StrLiteral: 
-        {
-          color = v4f(0.1f, 0.5f, 0.1f, 1.0f); 
-          str = push_str8f(arena, "`%S`", expr->str8);
-        } break;
-        
-        InvalidDefaultCase;
-      }
-      push_fancy_str8(arena, list, str, color);
-    }
-    else if(expr->left != 0 && expr->right != 0)
-    {
-      Assert(expression_kind_is_binary_op(expr->kind));
-      if(expr->kind == ExprKind_BinaryAccess)
-      {
-        push_fancy_str8(arena, list, push_str8f(arena, "%S:", expr->left->str8), color_blue);
-        push_fancy_str8(arena, list, push_str8f(arena, "%S", expr->right->str8), v4f(0.5f, 0.5f, 1.0f, 1.0f));
-      }
-      else
-      {
-        append_fancy_str_from_expr(arena, list, expr->left);
-        
-        String8 str = {0};
-        switch(expr->kind)
-        {
-          case ExprKind_BinarySum: str = S8("+"); break;
-          case ExprKind_BinaryMul: str = S8("*"); break;
-          case ExprKind_BinarySub: str = S8("-"); break;
-          case ExprKind_BinaryDiv: str = S8("/"); break;
-          case ExprKind_BinaryMod: str = S8("%"); break;
-          
-          case ExprKind_BinaryEq: str = S8("=="); break;
-          case ExprKind_BinaryGt: str = S8(">"); break;
-          case ExprKind_BinaryGe: str = S8(">="); break;
-          case ExprKind_BinaryLt: str = S8("<"); break;
-          case ExprKind_BinaryLe: str = S8("<="); break;
-          
-          case ExprKind_BinaryBitAnd  : str = S8("&"); break;
-          case ExprKind_BinaryBitOr   : str = S8("|"); break;
-          case ExprKind_BinaryLogicAnd: str = S8("&&"); break;
-          case ExprKind_BinaryLogicOr : str = S8("||"); break;
-          
-          InvalidDefaultCase;
+          expr_append_cmd_from_expr(arena, list, node->bin.left);
+          expr_append_cmd(arena, list, node, ExprCmdKind_BinaryOp);
+          expr_append_cmd_from_expr(arena, list, node->bin.right);
         }
-        push_fancy_str8(arena, list, str, color_red);
-        
-        append_fancy_str_from_expr(arena, list, expr->right);
-      }
+        expr_append_cmd(arena, list, node, ExprCmdKind_BinaryEnd);
+      } break;
+      
+      case ExprKind_Function:
+      {
+        expr_append_cmd(arena, list, node, ExprCmdKind_FunctionBegin);
+        for(EachNode(Expr, child, node->func.args.first))
+        {
+          expr_append_cmd_from_expr(arena, list, child);
+        }
+        expr_append_cmd(arena, list, node, ExprCmdKind_FunctionEnd);
+      } break;
+      
+      InvalidDefaultCase;
     }
-    else InvalidCodePath;
   }
+}
+
+
+Expr_Cmd_List
+expr_cmd_list_from_expr(Arena *arena, Expr *node)
+{
+  Expr_Cmd_List result = {0};
+  expr_append_cmd_from_expr(arena, &result, node);
+  return(result);
 }
 
 Fancy_String8_List
-push_fancy_strs_from_expr(Arena *arena, Expr *expr)
+push_fancy_strs_from_expr_cmd_list(Arena *arena, Expr_Cmd_List *cmd_list)
 {
   Fancy_String8_List result = {0};
-  append_fancy_str_from_expr(arena, &result, expr);
+  
+  for(EachNode(Expr_Cmd, cmd, cmd_list->first))
+  {
+    Expr *expr = cmd->expr;
+    Assert(expr != 0);
+    switch(cmd->kind)
+    {
+      case ExprCmdKind_Primary:
+      {
+        String8 str = {0};
+        V4f color = {0};
+        switch(cmd->expr->prim.kind)
+        {
+          case ExprPrimaryKind_Identifier: 
+          {
+            color = color_blue; 
+            str = expr->prim.str8;
+          } break;
+          
+          case ExprPrimaryKind_NumLiteral: 
+          {
+            color = color_green; 
+            str = push_str8f(arena, "%u", expr->prim.u32);
+          } break;
+          
+          case ExprPrimaryKind_StrLiteral: 
+          {
+            color = v4f(0.1f, 0.5f, 0.1f, 1.0f); 
+            str = push_str8f(arena, "`%S`", expr->prim.str8);
+          } break;
+          
+          InvalidDefaultCase;
+        }
+        fancy_str8_push(arena, &result, str, color);
+      } break;
+      
+      case ExprCmdKind_BinaryOp:
+      {
+        String8 str = {0};
+        switch(expr->bin.kind)
+        {
+          case ExprBinaryKind_Sum: str = S8("+"); break;
+          case ExprBinaryKind_Mul: str = S8("*"); break;
+          case ExprBinaryKind_Sub: str = S8("-"); break;
+          case ExprBinaryKind_Div: str = S8("/"); break;
+          case ExprBinaryKind_Mod: str = S8("%"); break;
+          
+          case ExprBinaryKind_Eq: str = S8("=="); break;
+          case ExprBinaryKind_Gt: str = S8(">");  break;
+          case ExprBinaryKind_Ge: str = S8(">="); break;
+          case ExprBinaryKind_Lt: str = S8("<");  break;
+          case ExprBinaryKind_Le: str = S8("<="); break;
+          
+          case ExprBinaryKind_BitAnd  : str = S8("&");  break;
+          case ExprBinaryKind_BitOr   : str = S8("|");  break;
+          case ExprBinaryKind_LogicAnd: str = S8("&&"); break;
+          case ExprBinaryKind_LogicOr : str = S8("||"); break;
+          case ExprBinaryKind_Access  : str = S8(".");  break;
+          
+          InvalidDefaultCase;
+        }
+        fancy_str8_push(arena, &result, str, color_red);
+      } break;
+      
+      case ExprCmdKind_BinaryBegin:
+      {
+        fancy_str8_push(arena, &result, S8("("), color_white);
+      } break;
+      
+      case ExprCmdKind_FunctionBegin:
+      {
+        fancy_str8_push(arena, &result, expr->func.name, color_blue);
+        fancy_str8_push(arena, &result, S8("("), color_white);
+      } break;
+      
+      case ExprCmdKind_BinaryEnd:
+      case ExprCmdKind_FunctionEnd:
+      {
+        fancy_str8_push(arena, &result, S8(")"), color_white);
+      } break;
+      
+      InvalidDefaultCase;
+    }
+  }
   return(result);
 }
 
 void
-append_cell_from_expr_value(Arena *arena, UI_Cell *cell_arr, U32 *cell_count, U32 cell_capacity, Expr_Value *value)
+cell_init_from_expr_value_leaf(Arena *arena, UI_Cell *cell, Expr_Value *value)
 {
-  Assert(*cell_count + 1 <= cell_capacity);
-  UI_Cell *cell = (cell_arr + (*cell_count)++);
+  Assert(cell != 0);
+  
+  cell->data = (void *)value;
   switch(value->type)
   {
     case ExprType_B32:
     {
       cell->label = (value->b32 ? S8("true") : S8("false"));
-      // TODO(erb): toggle?
     } break;
     
     case ExprType_U32: 
     {
       cell->label = push_str8f(arena, "%u", value->u32);
-      // TODO(erb): slider?
     } break;
     
     case ExprType_Str8: 
@@ -935,37 +556,75 @@ append_cell_from_expr_value(Arena *arena, UI_Cell *cell_arr, U32 *cell_count, U3
     
     case ExprType_DateTime: 
     {
-      cell->label = push_str8f(arena, "%02u/%02u/%02u", 
-                               value->dt.date.day, value->dt.date.month, value->dt.date.year);
+      cell->flags = UICellFlags_FancyStrLabel;
+      fancy_str8_push(arena, &cell->label_fancy_str, 
+                      push_str8f(arena, "%02u/%02u/%02u - %02u:%02u:%02u", 
+                                 value->dt.date.day, value->dt.date.month, value->dt.date.year, 
+                                 value->dt.time.hour, value->dt.time.minute, value->dt.time.second),
+                      color_yellow);
     } break;
     
     case ExprType_Event:
     {
       Scratch scratch = scratch_begin(&arena, 1);
       
+      Assert(value->event != 0);
       Calendar_Date start = value->event->start.date;
       Calendar_Date end = value->event->end.date;
-      String8 title = str8_from_name_chunk_list(scratch.arena, &value->event->title_chunk_list);
+      String8 title = str8_from_name_chunk_list(arena, &value->event->title_chunk_list);
       
-      cell->flags |= UICellFlags_FancyStrLabel;
-      push_fancy_str8(arena, &cell->label_fancy_str, push_str8f(arena, "#%u ", value->event->id), color_yellow);
-      push_fancy_str8(arena, &cell->label_fancy_str, push_str8f(arena, "%S ", title), color_white);
-      push_fancy_str8(arena, &cell->label_fancy_str, push_str8f(arena, "%02u/%02u/%u", start.day, start.month, start.year), color_blue);
-      push_fancy_str8(arena, &cell->label_fancy_str, S8(" - "), color_white);
-      push_fancy_str8(arena, &cell->label_fancy_str, push_str8f(arena, "%02u/%02u/%u", end.day, end.month, end.year), v4f(0.2f, 0.2f, 0.8f, 1.0f));
+      cell->flags = UICellFlags_FancyStrLabel;
+      fancy_str8_push(arena, &cell->label_fancy_str, push_str8f(arena, "#%u ", value->event->id), color_yellow);
+      fancy_str8_push(arena, &cell->label_fancy_str, title, color_white);
+      fancy_str8_push(arena, &cell->label_fancy_str, push_str8f(arena, " %02u/%02u/%u", start.day, start.month, start.year), color_blue);
+      fancy_str8_push(arena, &cell->label_fancy_str, S8(" - "), color_white);
+      fancy_str8_push(arena, &cell->label_fancy_str, push_str8f(arena, "%02u/%02u/%u", end.day, end.month, end.year), v4f(0.2f, 0.2f, 0.8f, 1.0f));
+      
+      cell->filter_needle = title;
       
       scratch_end(&scratch);
     } break;
     
     case ExprType_List:
     {
-      cell->label = push_str8f(arena, "list(%d)", value->list.count);
+      String8 expr_type_str_table[] = 
+      {
+        [ExprType_None    ] = S8Lit("?"),
+        [ExprType_B32     ] = S8Lit("b32"),
+        [ExprType_U32     ] = S8Lit("u32"),
+        [ExprType_Str8    ] = S8Lit("str8"),
+        [ExprType_DateTime] = S8Lit("datetime"),
+        [ExprType_Event   ] = S8Lit("event"),
+        [ExprType_List    ] = S8Lit("list"),
+      };
+      Assert(ArraySize(expr_type_str_table) == ExprType_COUNT);
+      String8 sub_type_str = expr_type_str_table[value->sub_type];
       
+      cell->flags = UICellFlags_FancyStrLabel;
+      fancy_str8_push(arena, &cell->label_fancy_str, S8("list<"), color_white);
+      fancy_str8_push(arena, &cell->label_fancy_str, sub_type_str, color_blue);
+      fancy_str8_push(arena, &cell->label_fancy_str, S8(">["), color_white);
+      fancy_str8_push(arena, &cell->label_fancy_str, push_str8f(arena, "%d", value->list.count), color_green);
+      fancy_str8_push(arena, &cell->label_fancy_str, S8("]"), color_white);
+    } break;
+  }
+}
+
+void
+cell_arr_append_from_expr_value_recur(Arena *arena, UI_Cell *cell_arr, U32 *cell_count, U32 cell_capacity, 
+                                      Expr_Value *value)
+{
+  if(*cell_count + 1 <= cell_capacity)
+  {
+    UI_Cell *heading_cell = (cell_arr + (*cell_count)++);
+    cell_init_from_expr_value_leaf(arena, heading_cell, value);
+    if(value->type == ExprType_List)
+    {
       for(EachNode(Expr_Value, v, value->list.first))
       {
-        append_cell_from_expr_value(arena, cell_arr, cell_count, cell_capacity, v);
+        cell_arr_append_from_expr_value_recur(arena, cell_arr, cell_count, cell_capacity, v);
       }
-    } break;
+    }
   }
 }
 
@@ -983,148 +642,769 @@ expr_value_total_node_count_rec(Expr_Value *value)
   return(result);
 }
 
-EXPR_FUNCTION_IMPL_FUNC(app_get_events_expr) // Arena *arena, Expr_Value *expr, void *data
+Expr_Variable *
+expr_env_push_var(Expr_Environment *env, Arena *arena)
 {
-  Assert(data != 0);
-  Assert(expr != 0 && expr->kind == ExprKind_Identifier);
+  Expr_Variable *result = PushStruct(arena, Expr_Variable);
+  SLLStackPush(env->first_var, result);
+  return(result);
+}
+
+Expr_Variable *
+expr_env_append_var_value(Expr_Environment *env, Arena *arena, String8 iden, Expr_Value value)
+{
+  Expr_Variable *var = expr_env_push_var(env, arena);
+  var->iden = iden;
+  var->is_func = false;
+  var->value = value;
+  return(var);
+}
+
+Expr_Variable *
+expr_env_append_var_func(Expr_Environment *env, Arena *arena, String8 iden, Expr_Function_Impl_Func *func)
+{
+  Expr_Variable *var = expr_env_push_var(env, arena);
+  var->iden = iden;
+  var->is_func = true;
+  var->only_expr_args = false;
+  var->func = func;
+  return(var);
+}
+
+
+Expr_Variable *
+expr_env_append_var_expr_func(Expr_Environment *env, Arena *arena, String8 iden, Expr_Function_Impl_Func *func)
+{
+  Expr_Variable *var = expr_env_append_var_func(env, arena, iden, func);
+  var->only_expr_args = true;
+  return(var);
+}
+
+EXPR_FUNCTION_IMPL_FUNC(app_get_events_expr) // Arena *arena, Expr_Environment *env, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
+{
+  Assert(env->data != 0);
   
-  App_State *app_state = (App_State *)data;
+  App_State *app_state = (App_State *)env->data;
   
   Expr_Value_List list = {0};
   for(EachNode(Event, event, app_state->event_list.first))
   {
-    Expr_Value *v = PushStruct(arena, Expr_Value);
+    Expr_Value *v = expr_value_list_push(arena, &list);
     v->type = ExprType_Event;
     v->event = event;
-    SLLQueueAppend(list.first, list.last, v);
-    list.count++;
   }
   
-  Expr_Value result = {0};
-  result.list = list;
-  result.type = ExprType_List;
+  Expr_Func_Impl_Result result = {0};
+  result.value.list = list;
+  result.value.sub_type = ExprType_Event;
+  result.value.type = ExprType_List;
   return(result);
 }
 
-EXPR_FUNCTION_IMPL_FUNC(app_get_tags_expr) // Arena *arena, Expr_Value *expr, void *data
+EXPR_FUNCTION_IMPL_FUNC(app_get_event_from_id_expr) // Arena *arena, Expr_Environment *env, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
 {
-  Assert(data != 0);
-  Assert(expr != 0 && expr->kind == ExprKind_Identifier);
+  Assert(env->data != 0);
   
-  App_State *app_state = (App_State *)data;
+  String8 error = {0};
+  if(arg_values->count != 1)
+  {
+    error = S8("expected one argument");
+  }
+  
+  
+  // TODO(erb): use computed value of the arguments!!!!!!
+  Event_ID id = {0};
+  if(error.value == 0)
+  {
+    Expr_Value *arg = arg_values->first;
+    Assert(arg != 0);
+    
+    if(arg->type == ExprType_U32)
+    {
+      id = event_id_make(arg->u32);
+    }
+    else
+    {
+      error = S8("expected a number literal argument");
+    }
+  }
+  
+  App_State *app_state = (App_State *)env->data;
+  
+  Event *event = 0;
+  if(error.value == 0)
+  {
+    for(EachNode(Event, test, app_state->event_list.first))
+    {
+      if(event_id_equals(test->id, id))
+      {
+        event = test;
+        break;
+      }
+    }
+  }
+  
+  Expr_Func_Impl_Result result = {0};
+  result.error = error;
+  if(error.value == 0)
+  {
+    if(event != 0)
+    {
+      result.value.type = ExprType_Event;
+      result.value.event = event;
+    }
+    else
+    {
+      result.error = S8("no event with id");
+    }
+  }
+  return(result);
+}
+
+
+EXPR_FUNCTION_IMPL_FUNC(app_get_tags_expr) // Arena *arena, Expr_Environment *env, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
+{
+  Assert(env->data != 0);
+  
+  App_State *app_state = (App_State *)env->data;
   
   Expr_Value_List list = {0};
   for(EachElement(Event_Tag, tag, app_state->tags))
   {
     if(tag->used)
     {
-      Expr_Value *v = PushStruct(arena, Expr_Value);
+      Expr_Value *v = expr_value_list_push(arena, &list);
       v->type = ExprType_Str8;
       v->str8 = S8Struct(tag->name, tag->name_size);
-      SLLQueueAppend(list.first, list.last, v);
-      list.count++;
     }
   }
-  Expr_Value result = {0};
-  result.list = list;
-  result.type = ExprType_List;
+  
+  Expr_Func_Impl_Result result = {0};
+  result.value.list = list;
+  result.value.sub_type = ExprType_Str8;
+  result.value.type = ExprType_List;
   return(result);
 }
 
-EXPR_FUNCTION_IMPL_FUNC(app_expr_print_func) // Arena *arena, Expr_Value *expr, void *data
+EXPR_FUNCTION_IMPL_FUNC(app_ui_rule_calendar) // Arena *arena, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
+{
+  Expr_Func_Impl_Result result = {0};
+  
+  Assert(arg_values != 0);
+  if(result.error.value == 0 && 
+     arg_values->count != 1)
+  {
+    result.error = S8("expected one argument");
+  }
+  
+  Expr_Value *arg = 0;
+  if(result.error.value == 0)
+  {
+    arg = arg_values->first;
+    Assert(arg != 0);
+    if(!(arg->type == ExprType_List && 
+         arg->sub_type == ExprType_DateTime))
+    {
+      result.error = S8("expected a date time list");
+    }
+  }
+  
+  if(result.error.value == 0)
+  {
+    result.value = *arg;
+    result.value.ui_rule = ExprUIRule_Calendar;
+  }
+  return(result);
+}
+
+EXPR_FUNCTION_IMPL_FUNC(app_ui_rule_raw) // Arena *arena, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
+{
+  Expr_Func_Impl_Result result = {0};
+  
+  Assert(arg_values != 0);
+  if(result.error.value == 0 && 
+     arg_values->count != 1)
+  {
+    result.error = S8("expected a single argument");
+  }
+  
+  Expr_Value *arg = 0;
+  if(result.error.value == 0)
+  {
+    arg = arg_values->first;
+    Assert(arg != 0);
+    if(arg->ui_rule != ExprUIRule_None)
+    {
+      result.error = S8("allready decorated?");
+      InvalidCodePath;
+    }
+  }
+  if(result.error.value == 0)
+  {
+    result.value = *arg;
+    result.value.ui_rule = ExprUIRule_Raw;
+  }
+  return(result);
+}
+
+EXPR_FUNCTION_IMPL_FUNC(app_ui_rule_focus) // Arena *arena, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
+{
+  Expr_Func_Impl_Result result = {0};
+  
+  Assert(arg_values != 0);
+  if(arg_values->count != 1)
+  {
+    result.error = S8("expected one argument");
+  }
+  
+  Expr_Value *arg = 0;
+  if(result.error.value == 0)
+  {
+    arg = arg_values->first;
+    Assert(arg != 0);
+    if(arg->type != ExprType_Event)
+    {
+      result.error = S8("expected a date time list");
+    }
+  }
+  
+  if(result.error.value == 0)
+  {
+    result.value = *arg;
+    result.value.ui_rule = ExprUIRule_FocusEvent;
+  }
+  return(result);
+}
+
+EXPR_FUNCTION_IMPL_FUNC(app_expand_arg_columns_ui_rule) // Arena *arena, Expr_Environment *env, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
 {
   Scratch scratch = scratch_begin(&arena, 1);
   
-  Expr_Value result = {0};
-  String8_Builder sb = str8_builder_make_default();
-  for(EachNode(Expr, arg, expr->right))
-  {
-    str8_builder_str(scratch.arena, &sb, expr->str8);
-  }
-  result.type = ExprType_Str8;
-  result.str8 = push_str8_from_builder(arena, &sb);
+  String8 error = {0};
   
+  Assert(arg_exprs != 0);
+  if(arg_exprs->count < 2)
+  {
+    error = S8("expected at least two arguments");
+  }
+  
+  // NOTE(erb): first arg as an expression and evaluate it
+  Expr_Value first_arg_value = {0};
+  if(error.value == 0)
+  {
+    Expr *head_expr = arg_exprs->first;
+    Assert(head_expr != 0);
+    first_arg_value = expr_value_from_expr_with_environment(scratch.arena, head_expr, env, &error);
+  }
+  
+  Expr_Value_List table = {0};
+  if(error.value == 0)
+  {
+    Expr_List column_args = {0};
+    column_args.first = arg_exprs->first->next;
+    column_args.last = arg_exprs->last;
+    Assert(column_args.first != 0 && column_args.last != 0);
+    
+    Expr_Value *first_context_value = (first_arg_value.type == ExprType_List ? 
+                                       first_arg_value.list.first : 
+                                       &first_arg_value);
+    
+    for(EachNode(Expr_Value, context_value, first_context_value))
+    {
+      Expr_Environment context_env = {0};
+      expr_env_append_var_value(&context_env, scratch.arena, S8("$"), *context_value);
+      
+      Expr_Value_List row_eval = expr_value_list_from_expr_list(arena, &context_env, &column_args, &error);
+      
+      Expr_Value *store = expr_value_list_push(arena, &table);
+      store->list = row_eval;
+      store->type = ExprType_List;
+    }
+  }
+  
+  Expr_Func_Impl_Result result = {0};
+  result.error = error;
+  if(error.value == 0)
+  {
+    result.value.list = table;
+    result.value.type = ExprType_List;
+    result.value.ui_rule = ExprUIRule_Columns;
+  }
   scratch_end(&scratch);
   return(result);
+}
+
+
+Tag_ID 
+create_event_tag(App_State *app_state, String8 name, V4f color)
+{
+  Tag_ID result = push_event_tag(app_state, name, color);
+  save_state(app_state);
+  return(result);
+}
+
+void
+event_add_tag(App_State *app_state, Event *event, Tag_ID tag)
+{
+  event_push_tag(event, tag);
+  save_state(app_state);
+}
+
+void
+ui_focus_event(UI_Ctx *ui, App_State *app_state, Event *event, B32 *is_color_picker_open, V4f *new_tag_color, 
+               Date_Input_State *date_input_state)
+{
+  Scratch scratch = scratch_begin(0, 0);
+  V4f label_color = with_alpha(v4ff(.35f), 1.0f);
+  
+  ui_set_next_sizing(ui, ui_grow(), ui_grow());
+  ui_set_next_layout_axis(ui, Axis2_Y);
+  ui_set_next_background_color(ui, color_black);
+  ui_set_next_padding(ui, pad2_equal(10.0f));
+  ui_parentf(ui, UIFlags_DrawBackGround, S8Z())
+  {
+    
+    V2f color_picker_pos = {0};
+    
+    // NOTE(erb): title
+    {
+#if 0
+      ui_set_next_font_size(ui, 64.0f); // TODO(erb): fix this!!!!!!
+#endif
+      ui_set_next_font_color(ui, label_color);
+      ui_labelf(ui, S8("title"));
+      
+      UI_Line_Input_State *title_input = ui_line_input(ui, ui_keyf("create_event_input"));
+      if(ui_line_input_created(ui, title_input))
+      {
+        String8 title = str8_from_name_chunk_list(scratch.arena, &event->title_chunk_list);
+        str8_writer_str(&title_input->writer, title);
+      }
+      if(ui_line_input_changed(ui, title_input))
+      {
+        name_chunk_list_free_all(&event->title_chunk_list, 
+                                 &app_state->first_free_name_chunk);
+        event->title_chunk_list = push_name_chunk_list(&app_state->name_chunk_arena, 
+                                                       &app_state->first_free_name_chunk,
+                                                       title_input->writer.str);
+      }
+    }
+    
+    // NOTE(erb): tags
+    {
+      ui_set_next_font_color(ui, label_color);
+      ui_parentf(ui, UIFlags_DrawText, S8("tags"));
+      
+      // NOTE(erb): list tags
+      ui_set_next_layout_axis(ui, Axis2_X);
+      ui_set_next_sizing(ui, ui_grow(), ui_fit());
+      ui_parentf(ui, 0, S8Z())
+      {
+        for(U32Each(idx, event->tag_count))
+        {
+          Event_Tag *tag = event_tag_from_id(app_state, event->tags[idx]);
+          ui_set_next_font_color(ui, tag->color);
+          ui_labelf(ui, S8Struct(tag->name, tag->name_size));
+        }
+      }
+      
+      // NOTE(erb): add tag
+      {
+        UI_Line_Input_State *tag_input = 0;
+        
+        ui_set_next_sizing(ui, ui_grow(), ui_fit());
+        ui_parentf(ui, 0, S8Z())
+        {
+          tag_input = ui_line_input(ui, ui_keyf("event_tag_input"));
+          
+          ui_set_next_seed_key(ui, ui_keyf("color_picker_seed"));
+          ui_set_next_sizing(ui, ui_fixed(30), ui_grow());
+          UI_Comm trigger = ui_color_picker_trigger(ui, *is_color_picker_open, *new_tag_color);
+          if(trigger.left_clicked)
+          {
+            *is_color_picker_open = !(*is_color_picker_open);
+          }
+          if(trigger.node)
+          {
+            Range_V2f rng = node_rng_v2f(trigger.node);
+            color_picker_pos = v2f(rng.min.x, rng.max.y+5);
+          }
+          
+          if(ui_buttonf(ui, S8("New Tag##new_tag_button")).left_clicked)
+          {
+            Tag_ID tag_id = create_event_tag(app_state, tag_input->writer.str, *new_tag_color);
+            event_add_tag(app_state, event, tag_id);
+            
+            // NOTE(erb): clear input
+            *new_tag_color = color_red;
+            str8_writer_reset(&tag_input->writer);
+          }
+        }
+        
+        ui_set_next_layout_axis(ui, Axis2_X);
+        ui_set_next_sizing(ui, ui_grow(), ui_fit());
+        ui_parentf(ui, 0, S8Z())
+        {
+          // NOTE(erb): tag search
+          for(EachElement(Event_Tag, tag, app_state->tags))
+          {
+            if(tag->used)
+            {
+              String8 name = S8Struct(tag->name, tag->name_size);
+              Tag_ID tag_id = id_from_tag(app_state, tag);
+              
+              if(!event_has_tag(event, tag_id) && 
+                 str8_find(name, tag_input->writer.str, 
+                           MatchFlags_CaseInsens).exists)
+              {
+                ui_set_next_background_color(ui, tag->color);
+                if(ui_buttonf(ui, S8("%S##tag_button_%d"), name, tag_id).left_clicked)
+                {
+                  event_add_tag(app_state, event, tag_id);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // NOTE(erb): date
+    {
+      ui_set_next_font_color(ui, label_color);
+      ui_labelf(ui, S8("date"));
+      
+      ui_set_next_sizing(ui, ui_grow(), ui_fit());
+      ui_date_time_line_input(ui, date_input_state, &event->start, &event->end);
+      
+      ui_set_next_background_color(ui, with_alpha(v4ff(0.2f), 1.0f));
+      ui_set_next_sizing(ui, ui_grow(), ui_fit());
+      ui_date_time_range_picker(ui, date_input_state, &event->start, &event->end);
+      
+      String8 error = date_input_state->last_error;
+      if(error.value != 0)
+      {
+        ui_set_next_font_color(ui, color_red);
+        ui_labelf(ui, S8("error: %S"), error);
+      }
+    }
+    
+    // NOTE(erb): floating color picker
+    if(*is_color_picker_open)
+    {
+      ui_color_picker_popup(ui, color_picker_pos, is_color_picker_open, new_tag_color);
+    }
+  }
+  scratch_end(&scratch);
 }
 
 void
 watch_panel(App_State *app_state, View_ID id)
 {
+  Assert(view_id_is_valid(id));
+  View *view = view_from_id(app_state, id);
+  Assert(view);
+  Assert(view->kind == ViewKind_Watch);
+  
+  if(!view->is_initialized)
+  {
+    view->is_initialized = true;
+    view->expr_writer_buffer_size = 64;
+    arena_init(&view->expr_state_arena, view->expr_state_buffer, ArraySize(view->expr_state_buffer));
+  }
+  
   UI_Ctx *ui = &app_state->ui;
-  Scratch scratch = scratch_begin(0, 0);
+  UI_Key input_key = ui_keyf("watch_expr_input");
   
-  UI_Line_Input_State *input = ui_line_input(ui, ui_keyf("watch_expr"));
-  
-  String8 expr_str = input->writer.str;
-  
-  String8 error = {0};
-  Token_List tokens = token_list_from_str(scratch.arena, expr_str, &error);
-  
-  Expr *expr = 0;
-  if(error.value == 0)
+  // NOTE(erb): expr selection
   {
-    Token_Iterator token_it = {0};
-    token_it.current = tokens.first;
-    expr = expression_from_eat_token_list(scratch.arena, &token_it, &error);
-  }
-  
-  ui_labelf(ui, S8("expr:"));
-  Fancy_String8_List fancy_strs = push_fancy_strs_from_expr(scratch.arena, expr);
-  
-  ui_fancy_str(ui, fancy_strs);
-  
-  Expr_Value value = {0};
-  if(error.value == 0)
-  {
-    // NOTE(erb): get global vars
-    Expr_Variable vars[] = 
+    I32 new_cursor = view->selection_cursor;
+    if(key_pressed(ui, GFXKey_Up))
     {
-      {
-        .iden = S8Lit("events"),
-        .is_func = true,
-        .func = app_get_events_expr,
-      },
-      {
-        .iden = S8Lit("tags"),
-        .is_func = true,
-        .func = app_get_tags_expr,
-      },
-      {
-        .iden = S8Lit("now"),
-        .value.dt = os_get_local_date_time(),
-        .value.type = ExprType_DateTime,
-      },
-      {
-        .iden = S8Lit("print"),
-        .is_func = true,
-        .func = app_expr_print_func,
-      },
-    };
-    
-    Expr_Environment env = {0};
-    env.var_arr = vars;
-    env.var_count = ArraySize(vars);
-    env.data = (void *)app_state;
-    
-    value = expression_value_from_expr_with_environment(scratch.arena, expr, &env, &error);
+      new_cursor -= 1;
+    }
+    if(key_pressed(ui, GFXKey_Down))
+    {
+      new_cursor += 1;
+    }
+    if(new_cursor < 0)
+    {
+      new_cursor = (I32)view->expr_state_count;
+    }
+    if(new_cursor > (I32)view->expr_state_count)
+    {
+      new_cursor = 0;
+    }
+    view->selection_cursor = new_cursor;
   }
-  if(error.value != 0)
+  
+  B32 activate_edit_field = key_pressed(ui, GFXKey_F2);
+  B32 exit_edit_field = key_pressed(ui, GFXKey_Escape);
+  B32 toggle_expr_expanded = key_pressed(ui, GFXKey_Enter);
+  
+  ui_set_next_sizing(ui, ui_grow(), ui_grow());
+  ui_set_next_layout_axis(ui, Axis2_Y);
+  ui_set_next_background_color(ui, with_alpha(v4ff(0.1f), 1));
+  ui_set_next_child_gap(ui, 0);
+  ui_parentf(ui, UIFlags_DrawBackGround, S8Z())
   {
-    value.str8 = error;
-    value.type = ExprType_Str8;
+    UI_Line_Input_State *input = ui_line_input_state_from_key(ui, input_key);
+    
+    // NOTE(erb): ON enter new expr
+    if(input->writer.str.size != 0 && toggle_expr_expanded)
+    {
+      Expr_State *node = view->first_free_expr_state;
+      if(node != 0)
+      {
+        SLLStackPop(view->first_free_expr_state);
+      }
+      else
+      {
+        node = PushStruct(&view->expr_state_arena, Expr_State);
+        U8 *mem = PushArray(&view->expr_state_arena, view->expr_writer_buffer_size, U8);
+        str8_writer_init(&node->input_state.writer, mem, view->expr_writer_buffer_size);
+      }
+      SLLQueueAppend(view->first_expr_state, view->last_expr_state, node);
+      view->expr_state_count += 1;
+      str8_writer_str(&node->input_state.writer, input->writer.str);
+      node->input_state.key = ui_keyf("expr_edit_input_%p", node);
+      
+      view->selection_cursor = (I32)view->expr_state_count;
+      
+      str8_writer_reset(&input->writer);
+    }
+    
+    {
+      // NOTE(erb): ui for each expr
+      Scratch view_scratch = scratch_begin(0, 0);
+      I32 expr_idx = 0;
+      for(EachNode(Expr_State, expr_state, view->first_expr_state))
+      {
+        String8 expr_str = expr_state->input_state.writer.str;
+        Scratch scratch = arena_get_scratch(view_scratch.arena);
+        
+        B32 is_selected = (view->selection_cursor == expr_idx);
+        
+        if(is_selected)
+        {
+          if(activate_edit_field)
+          {
+            expr_state->is_editing = true;
+          }
+          if(exit_edit_field)
+          {
+            expr_state->is_editing = false;
+          }
+          if(toggle_expr_expanded)
+          {
+            expr_state->is_expanded = !expr_state->is_expanded;
+          }
+        }
+        
+        // NOTE(erb): tokenizing
+        String8 error = {0};
+        Token_List tokens = token_list_from_str(scratch.arena, expr_str, &error);
+        
+        // NOTE(erb): parsing
+        Expr *expr = 0;
+        if(error.value == 0)
+        {
+          Token_Iterator token_it = {0};
+          token_it.current = tokens.first;
+          expr = expr_from_token_it(scratch.arena, &token_it, &error);
+        }
+        
+        // NOTE(erb): evaluating
+        {
+          Expr_Value value = {0};
+          if(error.value == 0)
+          {
+            // NOTE(erb): get global vars
+            Expr_Environment env = {0};
+            env.data = (void *)app_state;
+            
+            expr_env_append_var_func(&env, scratch.arena, S8("events"), app_get_events_expr);
+            expr_env_append_var_func(&env, scratch.arena, S8("event"), app_get_event_from_id_expr);
+            expr_env_append_var_func(&env, scratch.arena, S8("tags"), app_get_tags_expr);
+            
+            expr_env_append_var_expr_func(&env, scratch.arena, S8("columns"), app_expand_arg_columns_ui_rule);
+            
+            expr_env_append_var_func(&env, scratch.arena, S8("calendar"), app_ui_rule_calendar);
+            expr_env_append_var_func(&env, scratch.arena, S8("raw"), app_ui_rule_raw);
+            expr_env_append_var_func(&env, scratch.arena, S8("focus"), app_ui_rule_focus);
+            
+            Expr_Value now_value = {0};
+            now_value.dt = os_get_local_date_time();
+            now_value.type = ExprType_DateTime;
+            expr_env_append_var_value(&env, scratch.arena, S8("now"), now_value);
+            
+            value = expr_value_from_expr_with_environment(scratch.arena, expr, &env, &error);
+          }
+          
+          if(error.value != 0)
+          {
+            value.str8 = error;
+            value.type = ExprType_Str8;
+          }
+          
+          // NOTE(erb): ui rendering
+          switch(value.ui_rule)
+          {
+            case ExprUIRule_None:
+            case ExprUIRule_Raw:
+            case ExprUIRule_Columns:
+            {
+              UI_Flags header_row_flags = 0;
+              if(is_selected)
+              {
+                header_row_flags |= UIFlags_DrawBackGround;
+                ui_set_next_background_color(ui, with_alpha(color_blue, 0.2f));
+              }
+              ui_set_next_sizing(ui, ui_grow(), ui_fit());
+              ui_set_next_layout_axis(ui, Axis2_X);
+              ui_set_next_child_gap(ui, 0);
+              ui_parentf(ui, header_row_flags, S8Z())
+              {
+                // NOTE(erb): header
+                {
+                  UI_Cell cell = {0};
+                  if(expr_state->is_editing)
+                  {
+                    cell.flags = UICellFlags_LineInput;
+                    cell.line_input = &expr_state->input_state;
+                  }
+                  else
+                  {
+                    cell.flags = UICellFlags_FancyStrLabel | (expr_state->is_expanded ? 
+                                                              UICellFlags_DrawExpandArrowOpen : 
+                                                              UICellFlags_DrawExpandArrowClose);
+                    fancy_str8_push(scratch.arena, &cell.label_fancy_str, expr_str, color_red);
+                  }
+                  ui_cell(ui, &cell, ui_keyf("expr_label_cell_%S", expr_str));
+                }
+                
+                // NOTE(erb): leaf
+                {
+                  UI_Cell cell = {0};
+                  cell_init_from_expr_value_leaf(scratch.arena, &cell, &value);
+                  ui_cell(ui, &cell, ui_keyf("table_cell_expr_ui"));
+                }
+              }
+              
+              if(expr_state->is_expanded && value.type == ExprType_List)
+              {
+                if(value.ui_rule == ExprUIRule_Columns)
+                {
+                  for(EachNode(Expr_Value, row_expr, value.list.first))
+                  {
+                    if(row_expr->type == ExprType_List)
+                    {
+                      ui_set_next_layout_axis(ui, Axis2_X);
+                      ui_set_next_sizing_x(ui, ui_grow());
+                      ui_parentf(ui, 0, S8Z())
+                      {
+                        for(EachNode(Expr_Value, col_expr, row_expr->list.first))
+                        {
+                          UI_Cell *cell = PushStruct(scratch.arena, UI_Cell);
+                          cell_init_from_expr_value_leaf(scratch.arena, cell, col_expr);
+                          ui_cell(ui, cell, ui_keyf("table_cell_expr_ui_%p", cell));
+                        }
+                      }
+                    }
+                    else
+                    {
+                      ui_labelf(ui, S8("expected rows to be list type"));
+                      break;
+                    }
+                  }
+                }
+                else
+                {
+                  UI_Cell *cell_arr = PushArray(scratch.arena, value.list.count, UI_Cell);
+                  U32 cell_idx = 0;
+                  for(EachNode(Expr_Value, child, value.list.first))
+                  {
+                    UI_Cell *cell = (cell_arr + cell_idx++);
+                    cell_init_from_expr_value_leaf(scratch.arena, cell, child);
+                  }
+                  ui_cell_lister_items(ui, cell_arr, value.list.count, S8Z(), 0, true);
+                }
+              }
+            } break;
+            
+            case ExprUIRule_Calendar:
+            {
+              ui_labelf(ui, S8("calendar!!!!!!!"));
+              if(value.type == ExprType_List && 
+                 value.sub_type == ExprType_DateTime)
+              {
+                ui_set_next_sizing(ui, ui_grow(), ui_grow());
+                UI_Node *calendar_container = ui_nodef(ui, 0, S8("watch_calendar_container"));
+                ui_parent(ui, calendar_container);
+                
+                UI_Node *cached_cal_container = ui_node_from_key(ui, calendar_container->key);
+                if(cached_cal_container != 0)
+                {
+                  Range_V2f space = node_inner_rng_v2f(cached_cal_container);
+                  if(value.list.count > 0)
+                  {
+                    Assert(value.list.first != 0);
+                    Assert(value.list.first->type == ExprType_DateTime);
+                    Calendar_Date start_date = value.list.first->dt.date;
+                    
+                    U32 weeks_count = CapBottom(value.list.count/7, 1);
+                    
+                    ui_calendar(ui, start_date, v2i(7, weeks_count), space, &app_state->event_list);
+                  }
+                  else
+                  {
+                    ui_labelf(ui, S8("empty calendar"));
+                  }
+                }
+              }
+              else
+              {
+                ui_labelf(ui, S8("expected list of dates for calendar view"));
+                InvalidCodePath;
+              }
+            } break;
+            
+            case ExprUIRule_FocusEvent:
+            {
+              ui_labelf(ui, S8("focus event"));
+              
+              if(value.type == ExprType_Event)
+              {
+                Assert(value.event != 0);
+                B32 is_color_picker_open = false;
+                V4f new_tag_color = color_red;
+                Date_Input_State date_input_state = {0};
+                ui_focus_event(ui, app_state, value.event, 
+                               &is_color_picker_open, &new_tag_color, &date_input_state);
+              }
+              else
+              {
+                ui_labelf(ui, S8("expected event for focus view"));
+                InvalidCodePath;
+              }
+            } break;
+            
+            InvalidDefaultCase;
+            
+          }
+        }
+        
+        expr_idx += 1;
+      }
+      
+      if(view->selection_cursor == (I32)view->expr_state_count)
+      {
+        ui_set_next_border_color(ui, color_red);
+      }
+      ui_line_input(ui, input_key);
+      scratch_end(&view_scratch);
+    }
   }
-  
-  ui_labelf(ui, S8("result:"));
-  
-  U32 cell_count = expr_value_total_node_count_rec(&value);
-  UI_Cell *cell_arr = PushArray(scratch.arena, cell_count, UI_Cell);
-  U32 count = 0;
-  append_cell_from_expr_value(scratch.arena, cell_arr, &count, cell_count, &value);
-  
-  ui_cell_lister_items(ui, cell_arr, cell_count, S8Z(), 0);
-  
-  scratch_end(&scratch);
 }
 
 void
@@ -1231,7 +1511,7 @@ table_panel(App_State *app_state, View_ID id)
       F32 width = col->pct_of_row*row_width;
       ui_set_next_floating_pos(ui, layout.cursor);
       ui_set_next_sizing(ui, ui_fixed(width), ui_fit());
-      ui_set_next_border(ui, color_white, 1, 0);
+      ui_set_next_border_abs(ui, color_white, 1, 0);
       
       UI_Flags flags = UIFlags_Floating|UIFlags_DrawBorder|UIFlags_Comm;
       UI_Key cell_key = {0};
@@ -1266,9 +1546,7 @@ table_panel(App_State *app_state, View_ID id)
       {
         if(ui_comm_from_node(ui, cell).right_clicked)
         {
-          view->has_column_popup = true;
-          view->column_popup_pos = ui->input.cursor;
-          view->column_popup_pos.y += 10;
+          columns_append_and_resize(view, 0.3f);
         }
       }
       
@@ -1289,7 +1567,6 @@ table_panel(App_State *app_state, View_ID id)
         
         UI_Flags flags = (UIFlags_Floating|
                           UIFlags_DrawBorder|
-                          UIFlags_ClipRectangle|
                           UIFlags_Comm);
         UI_Key cell_key = {0};
         if(is_first && (event == app_state->event_list.last))
@@ -1304,73 +1581,44 @@ table_panel(App_State *app_state, View_ID id)
         }
         ui_set_next_floating_pos(ui, layout.cursor);
         ui_set_next_sizing(ui, ui_fixed(width), ui_fit());
-        ui_set_next_border(ui, color_white, 1, 0);
-        UI_Node *cell = ui_node_make(ui, flags, cell_key, S8Z());
-        if(ui_comm_from_node(ui, cell).hovered ||
-           ui_is_top_nav_interface(ui, cell->key))
+        ui_set_next_border_abs(ui, color_white, 1, 0);
+        UI_Node *cell_container = ui_node_make(ui, flags, cell_key, S8Z());
+        if(ui_comm_from_node(ui, cell_container).hovered ||
+           ui_is_top_nav_interface(ui, cell_container->key))
         {
-          cell->border_color = color_blue;
-          cell->border_thickness = 1.0f;
+          cell_container->border_color = color_blue;
+          cell_container->border_thickness = 1.0f;
         }
-        ui_parent(ui, cell)
+        ui_parent(ui, cell_container)
         {
           Scratch cell_scratch = arena_get_scratch(scratch.arena);
           
           String8 error = {0};
-          Expr_Value value = expression_value_from_str8(cell_scratch.arena, col->eval_str, event, &error);
+          
+          Expr_Environment env = {0};
+          Expr_Value event_value = {0};
+          event_value.event = event;
+          event_value.type = ExprType_Event;
+          expr_env_append_var_value(&env, scratch.arena, S8("$"), event_value);
+          
+          Expr_Value value = expr_value_from_str8_with_environment(cell_scratch.arena, col->eval_str, &env, &error);
           if(error.value != 0)
           {
             value.str8 = error;
             value.type = ExprType_Str8;
           }
           
-          ui_expand_value(ui, &value, (error.value != 0), 0);
+          // TODO(erb): make this call cleaner
+          UI_Cell cell = {0};
+          cell_init_from_expr_value_leaf(scratch.arena, &cell, &value);
+          ui_cell(ui, &cell, ui_keyf("table_cell_expr_ui"));
           
           scratch_end(&cell_scratch);
         }
         
-        UI_Node *cached_cell = ui_node_from_key(ui, cell->key);
+        UI_Node *cached_cell = ui_node_from_key(ui, cell_container->key);
         F32 height = (cached_cell != 0 ? cached_cell->size.y : 0);
         table_cell_end(&layout, v2f(width, height));
-      }
-    }
-    
-    if(view->has_column_popup)
-    {
-      ui_set_next_floating_pos(ui, view->column_popup_pos);
-      ui_set_next_sizing_x(ui, ui_fixed(300));
-      ui_set_next_layout_axis(ui, Axis2_Y);
-      ui_set_next_child_gap(ui, 2);
-      ui_set_next_background_color(ui, v4f(0, 0, 0.5f, 1));
-      ui_set_next_border(ui, v4f(0.7f, 0.7f, 0.9f, 1), 2, 0);
-      UI_Node *popup = ui_nodef(ui, 
-                                UIFlags_Floating
-                                |UIFlags_DrawBackGround
-                                |UIFlags_Comm
-                                |UIFlags_DrawBorder, 
-                                S8("table_popup_%llu"), id);
-      UI_Comm popup_comm = ui_comm_from_node(ui, popup);
-      if(popup_comm.node != 0)
-      {
-        popup->pos = popup_comm.node->pos;
-      }
-      ui_parent(ui,popup)
-        ui_seed_key(ui, popup->key)
-        ui_border(ui, v4ff(0), 0, 0)
-      {
-        ui_set_next_background_color(ui, color_blank);
-        ui_set_next_sizing_x(ui, ui_grow());
-        ui_set_next_corner_radius(ui, 0);
-        if(ui_buttonf(ui, S8("+New+##col_new_button")).left_clicked)
-        {
-          columns_append_and_resize(view, 0.3f);
-          view->has_column_popup = false;
-        }
-      }
-      
-      if(popup_comm.pressed_out)
-      {
-        view->has_column_popup = false;
       }
     }
   }
@@ -1429,21 +1677,6 @@ make_event(App_State *app_state, String8 title, Date_Time start, Date_Time end)
   return(new_event);
 }
 
-Tag_ID 
-create_event_tag(App_State *app_state, String8 name, V4f color)
-{
-  Tag_ID result = push_event_tag(app_state, name, color);
-  save_state(app_state);
-  return(result);
-}
-
-void
-event_add_tag(App_State *app_state, Event *event, Tag_ID tag)
-{
-  event_push_tag(event, tag);
-  save_state(app_state);
-}
-
 void
 remove_event(App_State *app_state, Event *event)
 {
@@ -1475,21 +1708,6 @@ lister_panel(App_State *app_state, Panel *panel, View_ID id)
   
   ui_cell_lister(ui, S8("search"), ui_keyf("lister_panel"), 
                  cell_arr, cell_count);
-  
-  
-#if 0
-  // NOTE(erb): event on other tab
-  if(ui_comm_from_node(ui, event_item).right_clicked)
-  {
-    View_ID view_id = push_view(app_state, ViewKind_EventFocus);
-    panel_append_view_set_current(panel, view_id);
-    
-    View *new_view = view_from_id(app_state, view_id);
-    new_view->is_initialized = true;
-    new_view->event_id = event->id;
-    new_view->new_tag_color = color_red;
-  }
-#endif
   
   scratch_end(&scratch);
 }
@@ -1631,8 +1849,6 @@ event_focus_panel(App_State *app_state, View_ID id)
   Assert(view != 0);
   Assert(view->kind == ViewKind_EventFocus);
   
-  Scratch scratch = scratch_begin(0, 0);
-  
   Event *event = 0;
   if(!view->is_initialized)
   {
@@ -1662,150 +1878,13 @@ event_focus_panel(App_State *app_state, View_ID id)
   }
   
   UI_Ctx *ui = &app_state->ui;
-  
-  V4f label_color = with_alpha(v4ff(.35f), 1.0f);
-  
-  ui_set_next_sizing(ui, ui_grow(), ui_grow());
-  ui_set_next_layout_axis(ui, Axis2_Y);
-  ui_set_next_background_color(ui, color_black);
-  ui_set_next_padding(ui, pad2_equal(10.0f));
-  ui_parentf(ui, UIFlags_DrawBackGround, S8Z())
-    ui_seed_key(ui, ui_keyf("event_focus_panel_%d", id))
+  ui_seed_key(ui, ui_keyf("event_focus_panel_%d", id))
   {
-    
-    V2f color_picker_pos = {0};
-    
-    // NOTE(erb): title
-    {
-#if 0
-      ui_set_next_font_size(ui, 64.0f); // TODO(erb): fix this!!!!!!
-#endif
-      ui_set_next_font_color(ui, label_color);
-      ui_labelf(ui, S8("title"));
-      
-      UI_Line_Input_State *title_input = ui_line_input(ui, ui_keyf("create_event_input_%d", id));
-      if(ui_line_input_changed(ui, title_input))
-      {
-        String8 title = str8_from_name_chunk_list(scratch.arena, &event->title_chunk_list);
-        str8_writer_str(&title_input->writer, title);
-      }
-      if(ui_line_input_changed(ui, title_input))
-      {
-        name_chunk_list_free_all(&event->title_chunk_list, 
-                                 &app_state->first_free_name_chunk);
-        event->title_chunk_list = push_name_chunk_list(&app_state->name_chunk_arena, 
-                                                       &app_state->first_free_name_chunk,
-                                                       title_input->writer.str);
-      }
-    }
-    
-    // NOTE(erb): tags
-    {
-      ui_set_next_font_color(ui, label_color);
-      ui_parentf(ui, UIFlags_DrawText, S8("tags"));
-      
-      // NOTE(erb): list tags
-      ui_set_next_layout_axis(ui, Axis2_X);
-      ui_set_next_sizing(ui, ui_grow(), ui_fit());
-      ui_parentf(ui, 0, S8Z())
-      {
-        for(U32Each(idx, event->tag_count))
-        {
-          Event_Tag *tag = event_tag_from_id(app_state, event->tags[idx]);
-          ui_set_next_font_color(ui, tag->color);
-          ui_labelf(ui, S8Struct(tag->name, tag->name_size));
-        }
-      }
-      
-      // NOTE(erb): add tag
-      {
-        UI_Line_Input_State *tag_input = 0;
-        
-        ui_set_next_sizing(ui, ui_grow(), ui_fit());
-        ui_parentf(ui, 0, S8Z())
-        {
-          tag_input = ui_line_input(ui, ui_keyf("event_tag_input_%d", id));
-          
-          ui_set_next_seed_key(ui, ui_keyf("color_picker_seed_%d", id));
-          ui_set_next_sizing(ui, ui_fixed(30), ui_grow());
-          UI_Comm trigger = ui_color_picker_trigger(ui, view->is_color_picker_open, view->new_tag_color);
-          if(trigger.left_clicked)
-          {
-            view->is_color_picker_open = !view->is_color_picker_open;
-          }
-          if(trigger.node)
-          {
-            Range_V2f rng = node_rng_v2f(trigger.node);
-            color_picker_pos = v2f(rng.min.x, rng.max.y+5);
-          }
-          
-          if(ui_buttonf(ui, S8("New Tag##new_tag_button_%d"), id).left_clicked)
-          {
-            Tag_ID tag_id = create_event_tag(app_state, tag_input->writer.str, view->new_tag_color);
-            event_add_tag(app_state, event, tag_id);
-            
-            // NOTE(erb): clear input
-            view->new_tag_color = color_red;
-            str8_writer_reset(&tag_input->writer);
-          }
-        }
-        
-        ui_set_next_layout_axis(ui, Axis2_X);
-        ui_set_next_sizing(ui, ui_grow(), ui_fit());
-        ui_parentf(ui, 0, S8Z())
-        {
-          // NOTE(erb): tag search
-          for(EachElement(Event_Tag, tag, app_state->tags))
-          {
-            if(tag->used)
-            {
-              String8 name = S8Struct(tag->name, tag->name_size);
-              Tag_ID tag_id = id_from_tag(app_state, tag);
-              
-              if(!event_has_tag(event, tag_id) && 
-                 str8_find(name, tag_input->writer.str, 
-                           MatchFlags_CaseInsens).exists)
-              {
-                ui_set_next_background_color(ui, tag->color);
-                if(ui_buttonf(ui, S8("%S##tag_button_%d_%d"), name, tag_id, id).left_clicked)
-                {
-                  event_add_tag(app_state, event, tag_id);
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    
-    // NOTE(erb): date
-    {
-      ui_set_next_font_color(ui, label_color);
-      ui_labelf(ui, S8("date"));
-      
-      ui_set_next_sizing(ui, ui_grow(), ui_fit());
-      ui_date_time_line_input(ui, &view->date_input_state, &event->start, &event->end);
-      
-      ui_set_next_background_color(ui, with_alpha(v4ff(0.2f), 1.0f));
-      ui_set_next_sizing(ui, ui_grow(), ui_fit());
-      ui_date_time_range_picker(ui, &view->date_input_state, &event->start, &event->end);
-      
-      String8 error = view->date_input_state.last_error;
-      if(error.value != 0)
-      {
-        ui_set_next_font_color(ui, color_red);
-        ui_labelf(ui, S8("error: %S"), error);
-      }
-    }
-    
-    // NOTE(erb): floating color picker
-    if(view->is_color_picker_open)
-    {
-      ui_color_picker_popup(ui, color_picker_pos, &view->is_color_picker_open, &view->new_tag_color);
-    }
+    ui_focus_event(ui, app_state, event, 
+                   &view->is_color_picker_open, 
+                   &view->new_tag_color,
+                   &view->date_input_state);
   }
-  
-  scratch_end(&scratch);
 }
 
 void
@@ -2004,7 +2083,7 @@ ui_rect_indicator(UI_Ctx *ui, UI_Key key, Range_V2f rect,
 {
   ui_set_next_rect(ui, rect);
   ui_set_next_background_color(ui, bg_color);
-  ui_set_next_border(ui, border_color, border_thickness, corner_radius);
+  ui_set_next_border_abs(ui, border_color, border_thickness, corner_radius);
   UI_Node *node = ui_node_make(ui, 
                                UIFlags_DrawBackGround
                                |UIFlags_DrawBorder
@@ -2018,7 +2097,7 @@ ui_rect_indicator(UI_Ctx *ui, UI_Key key, Range_V2f rect,
   {
     node->pos = rect_hover.min;
     node->size = rng_v2f_size(rect_hover);
-    node->corner_radius = corner_radius_hover;
+    node->corner_radius = rad_abs(corner_radius_hover);
   }
   return(comm);
 }
@@ -2241,7 +2320,7 @@ draw_tab_button_kind(Tab_Button_Kind kind, View_ID view, App_State *app_state, P
     case TabButtonKind_DragSource:
     {
       font_color = with_alpha(v4ff(0.3f), 0.8f);
-      ui_set_next_border(ui, color_yellow, 4.0f, 3.0f);
+      ui_set_next_border_abs(ui, color_yellow, 4.0f, 3.0f);
       ui_set_next_background_color(ui, with_alpha(v4ff(0.6f), 0.6f));
       ui_set_next_debug_str(ui, S8("original-ghost-tab-container"));
       container = ui_node_make(ui, 
@@ -2255,7 +2334,7 @@ draw_tab_button_kind(Tab_Button_Kind kind, View_ID view, App_State *app_state, P
     case TabButtonKind_DragDest:
     {
       font_color = color_blank;
-      ui_set_next_border(ui, color_blue, 5.0f, 5.0f);
+      ui_set_next_border_abs(ui, color_blue, 5.0f, 5.0f);
       ui_set_next_background_color(ui, color_white);
       container = ui_nodef(ui, 
                            UIFlags_DrawBackGround
@@ -2271,7 +2350,7 @@ draw_tab_button_kind(Tab_Button_Kind kind, View_ID view, App_State *app_state, P
   
   ui_parent(ui, container)
     ui_font_color(ui, font_color)
-    ui_border(ui, v4ff(0), 0, 0) 
+    ui_border_abs(ui, v4ff(0), 0, 0) 
     ui_background_color(ui, color_blank)
   {
     View_Kind view_kind = view_kind_from_id(app_state, view);
@@ -2296,7 +2375,6 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
   {
     if(panel->first == 0)
     {
-      B32 was_picking_new_tab = panel->is_picking_new_tab;
       V2f new_tab_button_bottom_left = {0};
       
       AssertImplies(panel->first_tab == 0, panel->last_tab == 0);
@@ -2316,17 +2394,15 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
                                       |UIFlags_ClipRectangle
                                       |UIFlags_DrawBorder
                                       |UIFlags_Comm, S8("panel_%p"), panel);
-#if 0
-      if(ui_comm_from_node(ui, panel_space).left_clicked)
-      {
-        ui_push_nav_interface_key(ui, panel_space->key);
-      }
-#endif
       if(ui_is_top_nav_interface(ui, panel_space->key))
       {
         panel_space->border_color = color_red;
         panel_space->border_thickness = 2.0f;
       }
+      
+      B32 was_picking_new_tab = panel->is_picking_new_tab;
+      UI_Comm new_tab_comm = {0};
+      
       ui_parent(ui, panel_space)
         ui_font_color(ui, color_white) 
         ui_seed_key(ui, panel_space->key)
@@ -2440,7 +2516,7 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
             {
               ui_set_next_background_color(ui, with_alpha(v4ff(0.2f), 1.0f));
             }
-            UI_Comm new_tab_comm = ui_buttonf(ui, S8("New##new_tab"), panel);
+            new_tab_comm = ui_buttonf(ui, S8("New##new_tab"), panel);
             if(new_tab_comm.left_clicked)
             {
               panel->is_picking_new_tab = true;
@@ -2455,7 +2531,7 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
         
         // NOTE(erb): leaf ui
         ui_set_next_layout_axis(ui, Axis2_Y);
-        ui_set_next_border(ui, v4f_lerp(color_white, color_yellow, 0.5f), 1, 5);
+        ui_set_next_border_abs(ui, v4f_lerp(color_white, color_yellow, 0.5f), 1, 5);
         ui_set_next_sizing(ui, ui_grow(), ui_grow());
         ui_parentf(ui, 
                    UIFlags_DrawBackGround
@@ -2492,71 +2568,46 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
         }
       }
       
-      if(!panel->is_picking_new_tab && 
-         key_pressed(ui, GFXKey_T) && key_down(ui, GFXKey_Control))
+      B32 popup_open_event = new_tab_comm.left_clicked || (key_pressed(ui, GFXKey_T) && key_down(ui, GFXKey_Control));
+      if(!panel->is_picking_new_tab && popup_open_event)
       {
         panel->is_picking_new_tab = true;
       }
       
+      UI_Key tab_popup_key = ui_keyf("tab_panel_popup_%p", panel);
+      
       if(panel->is_picking_new_tab)
       {
-        ui_set_next_debug_str(ui, S8("panel_popup"));
-        ui_set_next_floating_pos(ui, new_tab_button_bottom_left);
-        ui_set_next_sizing_x(ui, ui_fixed(200));
-        ui_set_next_layout_axis(ui, Axis2_Y);
-        ui_set_next_padding(ui, pad2_equal(2));
-        ui_set_next_child_gap(ui, 2);
-        ui_set_next_background_color(ui, v4f(0, 0, 0.5f, 1));
-        ui_set_next_border(ui, v4f(0.7f, 0.7f, 0.9f, 1), 2, 0);
-        UI_Node *popup = ui_nodef(ui, 
-                                  UIFlags_Comm
-                                  |UIFlags_DrawBackGround
-                                  |UIFlags_Floating
-                                  |UIFlags_DrawBorder, 
-                                  S8("panel_popup_%p"), panel);
-        if(!was_picking_new_tab)
+        UI_Cell *cell_arr = PushArray(scratch.arena, ViewKind_COUNT, UI_Cell);
+        U32 cell_idx = 0;
+        for(U32Each(kind, ViewKind_COUNT))
         {
-          ui_push_nav_interface_key(ui, popup->key);
-        }
-        if(ui_is_top_nav_interface(ui, popup->key))
-        {
-          popup->border_color = color_blue;
-        }
-        ui_parent(ui, popup) 
-          ui_seed_key(ui, popup->key)
-          ui_border(ui, v4ff(0), 0, 0)
-        {
-          UI_Key popup_input_key = ui_key_seed_with(ui_keyf("popup_input"), popup->key);
-          UI_Line_Input_State *popup_input = ui_line_input(ui, popup_input_key);
-          if(!was_picking_new_tab)
-          {
-            ui_push_nav_interface_key(ui, popup_input_key);
-          }
-          ui_background_color(ui, color_blank) 
-            ui_sizing_x(ui, ui_grow())
-            ui_corner_radius(ui, 0)
-          {
-            for(U32Each(kind, ViewKind_COUNT))
-            {
-              String8 label = label_from_view_kind((View_Kind)kind);
-              if(str8_find(label, popup_input->writer.str, MatchFlags_CaseInsens).exists)
-              {
-                UI_Comm new_button = ui_buttonf(ui, S8("%S##new_tab_option_%d_%p"), label, kind, panel);
-                if(new_button.left_clicked || new_button.left_pressed)
-                {
-                  // NOTE(erb): actually create the tab
-                  View_ID view = push_view(app_state, (View_Kind)kind);
-                  panel_append_view_set_current(panel, view);
-                  panel->is_picking_new_tab = false;
-                }
-              }
-            }
-          }
+          UI_Cell *cell = (cell_arr + cell_idx++);
+          cell->label = label_from_view_kind((View_Kind)kind);
+          cell->filter_needle = cell->label;
+          cell->flags = UICellFlags_Clickable;
+          cell->data = (void *)(U64)kind;
         }
         
-        if(ui_comm_from_node(ui, popup).pressed_out)
+        if(!was_picking_new_tab)
+        {
+          ui_push_nav_interface_key(ui, tab_popup_key);
+        }
+        
+        UI_Lister_Popup_Result result = ui_cell_lister_floating_popup(ui, new_tab_button_bottom_left, tab_popup_key, cell_arr, ViewKind_COUNT, S8("Tab"));
+        
+        if(result.lister.selected != 0)
+        {
+          // NOTE(erb): actually create the tab
+          View_Kind picked_kind = (View_Kind)(U64)result.lister.selected->data;
+          View_ID view = push_view(app_state, (View_Kind)picked_kind);
+          panel_append_view_set_current(panel, view);
+          panel->is_picking_new_tab = false;
+        }
+        if(result.pressed_out)
         {
           panel->is_picking_new_tab = false;
+          ui_pop_nav_interface_key(ui);
         }
       }
     }
@@ -2578,7 +2629,7 @@ ui_node_rec_depth_first_pre_order(UI_Node *node)
   UI_Node_Rec rec = {0};
   if(node != 0)
   {
-    if(node->first_child != 0)
+    if(node->next != 0)
     {
       rec.next = node->first_child;
       rec.push_count += 1;
@@ -2657,32 +2708,6 @@ key_map_from_cmd_kind(App_State *app_state, Command_Kind kind)
   return(set);
 }
 
-void
-ui_push_center_popup(UI_Ctx *ui)
-{
-  Range_V2f root_rect = node_rng_v2f(ui->root);
-  V2f root_rect_size = rng_v2f_size(root_rect);
-  V2f size = v2f_hada(root_rect_size, v2f(0.4f, 0.7f));
-  size.x = CapBottom(size.x, 500);
-  size.y = CapBottom(size.y, 500);
-  Range_V2f rect = rng_v2f_center_size(rng_v2f_center(root_rect), size);
-  
-  ui_set_next_debug_str(ui, S8("center_popup_rect"));
-  ui_set_next_rect(ui, rect);
-  UI_Node *node = ui_nodef(ui, UIFlags_Floating|UIFlags_ClipRectangle, S8Z());
-  ui_push_parent_temp(ui, node);
-  ui_push_seed_key(ui, ui_keyf("center_popup"));
-}
-
-void
-ui_pop_center_popup(UI_Ctx *ui)
-{
-  ui_pop_seed_key(ui);
-  ui->center_popup = ui_pop_parent_temp(ui);
-}
-
-#define ui_center_popup(ui) DeferLoop(ui_push_center_popup(ui), ui_pop_center_popup(ui))
-
 ////////////////////////////////////////////////////////////////
 // NOTE(erb): commands
 
@@ -2740,9 +2765,10 @@ ui_file_lister(App_State *app_state, Arena *arena)
           cell->label = entry->path;
           cell->data = entry;
           cell->flags = UICellFlags_Clickable;
+          cell->filter_needle = entry->path;
           if(entry->kind == FileKind_Directory)
           {
-            cell->flags |= UICellFlags_DrawExpandArrow;
+            cell->flags |= UICellFlags_DrawExpandArrowClose;
           }
         }
       }
@@ -2754,7 +2780,7 @@ ui_file_lister(App_State *app_state, Arena *arena)
       UI_Cell *selected = 0;
       ui_cell_lister_content_begin(ui);
       {
-        UI_Lister_Items_Result items_result = ui_cell_lister_items(ui, cell_arr, cell_count, search_term, scroll_offset);
+        UI_Lister_Items_Result items_result = ui_cell_lister_items(ui, cell_arr, cell_count, search_term, scroll_offset, false);
         selected = items_result.selected;
         ui_cell_lister_scroll(ui, scroll_key, 
                               items_result.view_height, 
@@ -2973,12 +2999,13 @@ COMMAND_FUNC(command_launcher)
                      UICellFlags_DrawKeyMaps);
       cell->data = (void *)(U64)kind;
       cell->key_map = key_map_from_cmd_kind(app_state, kind);
+      cell->filter_needle = str8_concat(scratch.arena, cell->label, cell->sub_label);
     }
     
     ui_center_popup(ui)
     {
       UI_Lister_Result result = ui_cell_lister(ui, S8("run"), ui_keyf("command_lister"), cell_arr, cell_count);
-      if(result.selected)
+      if(result.selected != 0)
       {
         Command_Kind cmd = (Command_Kind)(U64)result.selected->data;
         Assert(cmd_kind_is_valid(cmd));
@@ -3254,10 +3281,9 @@ UPDATE_AND_RENDER_FUNC(update_and_render)
       panel_move_ui_and_do(app_state, client_rect, split_region_half_width);
     }
     
-    
-    if(ui->center_popup)
+    if(ui->popup != 0)
     {
-      ui_parent(ui, ui->center_popup);
+      ui_parent(ui, ui->popup);
     }
     
     // NOTE(erb): context

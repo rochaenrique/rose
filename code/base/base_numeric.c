@@ -45,6 +45,13 @@ round_f32_to_u32(F32 value)
   return(result);
 }
 
+I32
+round_f32_to_i32(F32 value)
+{
+  I32 result = (I32)round_f32(value);
+  return(result);
+}
+
 F32
 mod_f32(F32 value, F32 divisor)
 {
@@ -655,6 +662,13 @@ rng_f32_size(Range_F32 range)
   return(size);
 }
 
+I32 
+rng_i32_size(Range_I32 range)
+{
+  I32 size = (range.max - range.min);
+  return(size);
+}
+
 Range_F32
 rng_f32_center_add(Range_F32 range, F32 v)
 {
@@ -851,6 +865,15 @@ rgb_from_packed_u32(U32 v)
   rgb255.g = ((v >>  8) & 0xFF);
   rgb255.b = ((v >>  0) & 0xFF);
   V3f result = rgb_f32_from_rgb_255(rgb255);
+  return(result);
+}
+
+V4f
+rgba_from_packed_u32(U32 v)
+{
+  V4f result = {0};
+  result.rgb = rgb_from_packed_u32(v);
+  result.a = 1.0f;
   return(result);
 }
 

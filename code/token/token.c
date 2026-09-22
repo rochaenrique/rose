@@ -180,6 +180,15 @@ token_it_peek_has_kind(Token_Iterator *it, Token_Kind kind)
   return(result);
 }
 
+B32
+token_it_peek_is_iden_str8(Token_Iterator *it, String8 str)
+{
+  Token *peek = token_it_peek(it);
+  B32 result = (peek != 0 && peek->kind == TokenKind_Identifier && str8_equals(peek->str8, str));
+  return(result);
+}
+
+
 Token *
 token_it_next(Token_Iterator *it)
 {

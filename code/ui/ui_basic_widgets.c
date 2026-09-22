@@ -1,3 +1,6 @@
+// ///////////////////////////////////////////////
+// NOTE(erb): regular button
+// ///////////////////////////////////////////////
 
 UI_Comm
 ui_buttonf(UI_Ctx *ui, String8 label, ...)
@@ -29,6 +32,10 @@ ui_buttonf(UI_Ctx *ui, String8 label, ...)
   }
 	return(result);
 }
+
+// ///////////////////////////////////////////////
+// NOTE(erb): line input
+// ///////////////////////////////////////////////
 
 F32
 ui_get_cursor_offset_x(UI_Text *text, I64 cursor)
@@ -294,8 +301,7 @@ ui_line_input_state_from_key(UI_Ctx *ui, UI_Key key)
     {
       result = PushStruct(&ui->input_state_arena, UI_Line_Input_State);
       result->key = key;
-      result->writer.str.value = result->buffer;
-      result->writer.capacity = ArraySize(result->buffer);
+      result->writer = push_str8_writer(&ui->input_state_arena, KB(1)); // TODO(erb): arbitrary size here
       result->created_frame = ui->frame_tick;
       ui->input_state_count++;
     }
@@ -342,13 +348,11 @@ ui_line_input_created(UI_Ctx *ui, UI_Line_Input_State *state)
   return(result);
 }
 
-UI_Line_Input_State *
-ui_line_input(UI_Ctx *ui, UI_Key key)
+void
+ui_line_input_update_state(UI_Ctx *ui, UI_Line_Input_State *state)
 {
-  UI_Line_Input_State *state = ui_line_input_state_from_key(ui, key);
-  Assert(state);
-  state->scroll_timer = Cap0(state->scroll_timer - (F32)ui->frame_delta_time);
-  
+  Assert(state != 0);
+  UI_Key key = state->key;
   B32 is_focused = ui_key_equals(key, UIGetStackValue(ui, nav_interface_key));
   
   B32 key_action_happened = false;
@@ -377,6 +381,12 @@ ui_line_input(UI_Ctx *ui, UI_Key key)
   // NOTE(erb): container
   UI_Node *container = 0;
   {
+    if(is_focused)
+    {
+      ui_push_border_color(ui, color_blue);
+      ui_push_border_thickness(ui, 2.0f);
+    }
+    
     ui_set_next_debug_str(ui, S8("line_input_container"));
     ui_set_next_sizing_x(ui, ui_grow());
     ui_set_next_hover_cursor(ui, GFXCursorKind_Beam);
@@ -389,10 +399,11 @@ ui_line_input(UI_Ctx *ui, UI_Key key)
                              key, S8Z());
     container->size.y = (text_size.y + padding_axis_sum(container->padding, Axis2_Y));
     container->sizing[Axis2_Y] = UISizing_Fixed;
+    
     if(is_focused)
     {
-      container->border_color = color_blue;
-      container->border_thickness = 2.0f;
+      ui_pop_border_color(ui);
+      ui_pop_border_thickness(ui);
     }
   }
   
@@ -471,7 +482,7 @@ ui_line_input(UI_Ctx *ui, UI_Key key)
     }
     ui_set_next_debug_str(ui, S8("input_field"));
     ui_set_next_sizing_x(ui, ui_grow());
-    ui_parentf(ui, UIFlags_Floating|UIFlags_DrawText, state->writer.str);
+    ui_parentf(ui, UIFlags_Floating|UIFlags_DrawText, text.content);
     ui_cursor_and_highlight(ui, input_pos, text_size.y, &text, &state->edit_state, inner_x.max);
   }
   
@@ -479,6 +490,214 @@ ui_line_input(UI_Ctx *ui, UI_Key key)
   {
     ui->cursor_api.set_func(GFXCursorKind_Beam, ui->cursor_api.data);
   }
-  
+}
+
+UI_Line_Input_State *
+ui_line_input(UI_Ctx *ui, UI_Key key)
+{
+  UI_Line_Input_State *state = ui_line_input_state_from_key(ui, key);
+  Assert(state);
+  state->scroll_timer = Cap0(state->scroll_timer - (F32)ui->frame_delta_time);
+  ui_line_input_update_state(ui, state);
   return(state);
+}
+
+
+// ///////////////////////////////////////////////
+// NOTE(erb): toggle switch input
+// ///////////////////////////////////////////////
+
+void
+ui_toggle_switch(UI_Ctx *ui, B32 *out_b32)
+{
+  V4f border_color = with_alpha(v4ff(.4f), 1);
+  V4f off_color = with_alpha(v4ff(.2f), 1);
+  V4f on_color = color_green;
+  
+  // NOTE(erb): this is done like this so the caller can overide with "ui_set_next_..."
+  UI_Node *node = 0;
+  
+  ui_background_color(ui, (*out_b32 ? on_color : off_color))
+    ui_border(ui, border_color, 2.f, rad(.3f, UIRadiusKind_PercentOfY))
+    ui_sizing_x(ui, ui_fixed(60))
+    ui_sizing_y(ui, ui_fixed(30))
+  {
+    ui_set_next_padding(ui, pad2_equal(5));
+    node = ui_nodef(ui, 
+                    UIFlags_Comm|
+                    UIFlags_DrawBackGround|
+                    UIFlags_DrawRounded|
+                    UIFlags_DrawBorder, 
+                    S8("b32_toggle_switch_%p"), out_b32);
+  }
+  UI_Comm comm = ui_comm_from_node(ui, node);
+  if(comm.left_clicked)
+  {
+    *out_b32 = !(*out_b32);
+  }
+  
+  ui_parent(ui, node)
+  {
+    if(comm.node != 0)
+    {
+      // NOTE(erb): inner indicator
+      Range_V2f container = node_inner_rng_v2f(comm.node);
+      V2f container_size = rng_v2f_size(container);
+      
+      Range_V2f indicator_rng = container; 
+      if(*out_b32)
+      {
+        indicator_rng.min.x = indicator_rng.max.x - container_size.x*0.5f;
+      }
+      else
+      {
+        indicator_rng.max.x = indicator_rng.min.x + container_size.x*0.5f;
+      }
+      
+      ui_set_next_rect(ui, indicator_rng);
+      ui_set_next_background_color(ui, color_white);
+      ui_set_next_corner_radius(ui, node->corner_radius);
+      ui_parentf(ui, UIFlags_DrawBackGround|UIFlags_Floating|UIFlags_DrawRounded, S8Z());
+    }
+  }
+}
+
+
+// ///////////////////////////////////////////////
+// NOTE(erb): i32 input
+// ///////////////////////////////////////////////
+
+void
+ui_rng_i32_input_compact(UI_Ctx *ui, I32 *value, Range_I32 range, String8 format)
+{
+  ui_set_next_align_x(ui, UIAlign_End);
+  
+  UI_Node *node = ui_nodef(ui, 
+                           UIFlags_Comm|
+                           UIFlags_DrawBackGround|
+                           UIFlags_DrawRounded|
+                           UIFlags_DrawBorder, 
+                           S8("rng_u32_input_%p"), value);
+  
+  UI_Comm comm = ui_comm_from_node(ui, node);
+  ui_parent(ui, node)
+  {
+    if(comm.node != 0)
+    {
+      Range_V2f internal = node_rng_v2f(comm.node);
+      F32 total_width = (internal.max.x - internal.min.x);
+      
+      F32 progress_width = (F32)(*value)/rng_i32_size(range) * total_width;
+      internal.max.x = internal.min.x + progress_width;
+      if(progress_width > 0)
+      {
+        internal = rng_v2f_center_sub(internal, v2ff(node->border_thickness));
+      }
+      
+      ui_set_next_rect(ui, internal);
+      ui_set_next_background_color(ui, with_alpha(color_red, 0.3f));
+      ui_parentf(ui, 
+                 UIFlags_Floating|
+                 UIFlags_DrawBackGround|
+                 UIFlags_DrawRounded, S8Z());
+    }
+    ui_labelf(ui, format, *value);
+  }
+  
+  if(comm.left_dragging)
+  {
+    node->border_color = color_red;
+    F32 value_post = ((F32)(*value) + ui->input.cursor_delta.x);
+    value_post = Cap(value_post, (F32)range.min, (F32)range.max);
+    *value = (U32)floor_f32_to_i32(value_post);
+  }
+}
+
+void
+ui_rng_f32_slider(UI_Ctx *ui, F32 *value, Range_F32 range)
+{
+  V4f border_color = with_alpha(v4ff(.4f), 1);
+  V4f bg_color = v4f(1, .7f, .2f, 1);
+  
+  // NOTE(erb): this is done like this so the caller can overide with "ui_set_next_..."
+  UI_Node *node = 0;
+  
+  ui_border(ui, border_color, 2.f, rad(.3f, UIRadiusKind_PercentOfY))
+    ui_sizing_x(ui, ui_fixed(100))
+    ui_sizing_y(ui, ui_fixed(30))
+  {
+    ui_set_next_padding(ui, pad2_equal(5));
+    node = ui_nodef(ui, 
+                    UIFlags_Comm|
+                    UIFlags_DrawBackGround|
+                    UIFlags_DrawRounded|
+                    UIFlags_DrawBorder, 
+                    S8("rng_i32_slider_%p"), value);
+  }
+  UI_Comm comm = ui_comm_from_node(ui, node);
+  if(comm.node != 0)
+  {
+    Range_V2f node_rng = node_rng_v2f(comm.node);
+    F32 node_width = (node_rng.max.x - node_rng.min.x);
+    
+    if(comm.left_dragging)
+    {
+      F32 delta = (ui->input.cursor_delta.x / node_width) * rng_f32_size(range);
+      F32 value_f32 = (*value) + delta;
+      *value = Cap(value_f32, range.min, range.max);
+    }
+    
+    ui_parent(ui, node)
+    {
+      // NOTE(erb): inner indicator
+      Range_V2f indicator_rng = node_rng;
+      F32 progress_width = (F32)(*value)/rng_f32_size(range) * node_width;
+      indicator_rng.max.x = indicator_rng.min.x + progress_width;
+      
+      ui_set_next_rect(ui, indicator_rng);
+      ui_set_next_background_color(ui, bg_color);
+      ui_set_next_border(ui, node->border_color, node->border_thickness, node->corner_radius);
+      ui_parentf(ui, 
+                 UIFlags_DrawBackGround|
+                 UIFlags_Floating|
+                 UIFlags_DrawRounded|
+                 UIFlags_DrawBorder, S8Z());
+    }
+  }
+}
+
+void
+ui_rng_i32_slider(UI_Ctx *ui, I32 *value, Range_U32 range)
+{
+  F32 value_f32 = (F32)(*value);
+  Range_F32 range_f32 = rng_f32((F32)range.min, (F32)range.max);
+  ui_rng_f32_slider(ui, &value_f32, range_f32);
+  *value = round_f32_to_i32(value_f32);
+}
+
+void
+ui_v3i_input(UI_Ctx *ui, String8 label, V3i *value, Range_V3i range, String8 fmt1, String8 fmt2, String8 fmt3)
+{
+  ui_seed_key(ui, ui_keyf("v2i_input_%S_%b", label, value));
+  ui_set_next_sizing_x(ui, ui_grow());
+  ui_set_next_layout_axis(ui, Axis2_X);
+  ui_set_next_align_y(ui, UIAlign_Center);
+  ui_parentf(ui, 0, S8Z())
+  {
+    ui_set_next_font_size(ui, 19.0f);
+    ui_labelf(ui, label);
+    
+    ui_sizing_x(ui, ui_grow())
+    {
+      String8 fmt_arr[] = { fmt1, fmt2, fmt3 };
+      for(U32Each(idx, 3))
+      {
+        I32 *v = (value->c + idx);
+        Range_I32 rng = rng_i32(range.min.c[idx], range.max.c[idx]);
+        String8 fmt = fmt_arr[idx];
+        ui_rng_i32_input_compact(ui, v, rng, fmt);
+      }
+    }
+  }
+  
 }

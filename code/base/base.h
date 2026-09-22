@@ -190,6 +190,7 @@ typedef enum Orientation2
   Orientation2_WE,
   Orientation2_NESW,
   Orientation2_NWSE,
+  Orientation2_COUNT,
 } Orientation2;
 
 typedef enum Direction2

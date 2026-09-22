@@ -140,6 +140,21 @@ pad2_xy(F32 x, F32 y)
   return(result);
 }
 
+UI_Radius
+rad(F32 value, UI_Radius_Kind kind)
+{
+  UI_Radius result = {0};
+  result.value = value;
+  result.kind = kind;
+  return(result);
+}
+
+UI_Radius
+rad_abs(F32 value)
+{
+  UI_Radius result = rad(value, UIRadiusKind_Absolute);
+  return(result);
+}
 
 F32
 padding_axis_sum(Padding2 padding, Axis2 axis)
@@ -305,24 +320,36 @@ UI_SET_NEXT_AND_PUSH_POP_FUNC(F32, border_thickness)
 
 // NOTE(erb): corner radius
 #define ui_corner_radius(context, value) DeferLoop(ui_push_corner_radius(context, value), ui_pop_corner_radius(context))
-UI_SET_NEXT_AND_PUSH_POP_FUNC(F32, corner_radius)
+UI_SET_NEXT_AND_PUSH_POP_FUNC(UI_Radius, corner_radius)
 
-// NOTE(erb): corner all
+#define ui_corner_radius_abs(context, value) ui_corner_radius(ui, rad_abs(value))
+void
+ui_set_next_corner_radius_abs(UI_Ctx *ui, F32 value)
+{
+  ui_set_next_corner_radius(ui, rad_abs(value));
+}
+
+// NOTE(erb): specify all the border at once
+
 #define ui_border(ui, color, thick, radius) \
 ui_border_color(ui, (color)) \
 ui_border_thickness(ui, (thick)) \
-ui_corner_radius(ui, (radius))
+ui_corner_radius(ui, radius)
+
+#define ui_border_abs(ui, color, thick, radius) ui_border(ui, color, thick, rad_abs(radius))
 
 void 
-ui_set_next_border(UI_Ctx *ui, V4f color, F32 thick, F32 radius)
+ui_set_next_border(UI_Ctx *ui, V4f color, F32 thick, UI_Radius radius)
 {
   ui_set_next_border_color(ui, color);
   ui_set_next_border_thickness(ui, thick);
-  if(radius != 0)
+  if(radius.value != 0)
   {
     ui_set_next_corner_radius(ui, radius);
   }
 }
+
+#define ui_set_next_border_abs(ui, color, thick, radius) ui_set_next_border(ui, color, thick, rad_abs(radius))
 
 void
 ui_set_next_background_color(UI_Ctx *ui, V4f color)
@@ -727,47 +754,90 @@ push_draw_cmd_text(Arena *arena, UI_Draw_Cmd_List *draw_cmds, UI_Text *text)
   return(cmd);
 }
 
+F32
+resolve_corner_radius(UI_Node *node)
+{
+  Assert(node != 0);
+  Assert(node->flags & UIFlags_DrawRounded);
+  F32 value = node->corner_radius.value;
+  F32 result = 0;
+  switch(node->corner_radius.kind)
+  {
+    case UIRadiusKind_Absolute:
+    {
+      result = value;
+    } break;
+    
+    case UIRadiusKind_PercentOfX:
+    {
+      Assert(value >= 0.f && value <= 1.f);
+      result = value * node->size.x;
+    } break;
+    
+    case UIRadiusKind_PercentOfY:
+    {
+      Assert(value >= 0.f && value <= 1.f);
+      result = value * node->size.y;
+    } break;
+    
+    case UIRadiusKind_PercentOfMax:
+    {
+      Assert(value >= 0.f && value <= 1.f);
+      result = value * Max(node->size.x, node->size.y);
+    } break;
+    
+    case UIRadiusKind_PercentOfMin:
+    {
+      Assert(value >= 0.f && value <= 1.f);
+      result = value * Min(node->size.x, node->size.y);
+    } break;
+    
+    InvalidDefaultCase;
+  }
+  return(result);
+}
+
 file_local void 
 draw_node_cmd(Arena *arena, UI_Draw_Cmd_List *draw_cmds, UI_Node *node)
 {
   Assert(draw_cmds);
   Assert(node);
   
-	if (node->flags & UIFlags_DrawBackGround)
+	if(node->flags & UIFlags_DrawBackGround)
 	{
 		UI_Draw_Cmd *cmd = push_draw_cmd(arena, draw_cmds, UIDrawKind_Rect);
 		cmd->range = node_rng_v2f(node);
     cmd->background = node->background;
-		if (node->flags & UIFlags_DrawRounded)
+		if(node->flags & UIFlags_DrawRounded)
 		{
-			cmd->rect.corner_radius = node->corner_radius;
+			cmd->rect.corner_radius = resolve_corner_radius(node);
 		}
 	}
   
-	if (node->flags & UIFlags_DrawBorder)
+	if(node->flags & UIFlags_DrawBorder)
 	{
     UI_Draw_Cmd *cmd = push_draw_cmd(arena, draw_cmds, UIDrawKind_RectLines);
 		cmd->range = node_rng_v2f(node);
     cmd->background = grad2_single(node->border_color);
     cmd->rect.border_thickness = node->border_thickness;
-		if (node->flags & UIFlags_DrawRounded)
+		if(node->flags & UIFlags_DrawRounded)
 		{
-			cmd->rect.corner_radius = node->corner_radius;
+			cmd->rect.corner_radius = resolve_corner_radius(node);
 		}
 	}
 	
-	if (node->flags & UIFlags_DrawText)
+	if(node->flags & UIFlags_DrawText)
 	{
 		UI_Text *text = node->text;
 		Assert(text);
 		
-		if (text->line_count > 0)
+		if(text->line_count > 0)
 		{
       F32 line_height = text->face.size + text->face.line_spacing;
 			U32 line_idx = 0;
-			for (UI_Line_Node *line = text->first_line;
-           line && line_idx < text->line_count;
-           line = line->next, line_idx++)
+			for(UI_Line_Node *line = text->first_line;
+          line && line_idx < text->line_count;
+          line = line->next, line_idx++)
 			{
         UI_Draw_Cmd *cmd = push_draw_cmd_text(arena, draw_cmds, text);
         cmd->text.content = line->content;
@@ -991,7 +1061,7 @@ ui_begin_frame(UI_Ctx *ctx, UI_Font_Face face, GFX_Event_List *events, Range_V2f
   ui_push_seed_key(ctx, ui_key_null());
 	ui_push_sizing_x(ctx, ui_fit());
 	ui_push_sizing_y(ctx, ui_fit());
-	ui_push_corner_radius(ctx, 2);
+	ui_push_corner_radius(ctx, rad_abs(2));
 	ui_push_border_thickness(ctx, 1);
   ui_push_layout_axis(ctx, Axis2_X);
 	
@@ -1013,7 +1083,7 @@ ui_end_frame(UI_Ctx *ctx)
   
 	ctx->node_count = 0;
 	ctx->root = 0;
-  ctx->center_popup = 0;
+  ctx->popup = 0;
 }
 
 F32 
@@ -1507,7 +1577,9 @@ ui_comm_from_node(UI_Ctx *ui, UI_Node *node)
     {
       rect = node_rng_v2f(cached);
     }
-    if(rng_v2f_contains_inclusive(rect, ui->input.cursor))
+    
+    result.hovered = rng_v2f_contains_inclusive(rect, ui->input.cursor);
+    if(result.hovered)
     {
       ui->hot_node = node->key;
     }
@@ -1531,7 +1603,6 @@ ui_comm_from_node(UI_Ctx *ui, UI_Node *node)
     {
       result.left_down = mouse_left_down;
       result.right_down = mouse_right_down;
-      result.hovered = true;
       if(mouse_left_released || mouse_right_released)
       {
         if(is_hot)
@@ -1545,7 +1616,7 @@ ui_comm_from_node(UI_Ctx *ui, UI_Node *node)
     else if(is_hot)
     {
       result.hovered = true;
-      if (mouse_left_pressed || mouse_right_pressed) 
+      if(mouse_left_pressed || mouse_right_pressed) 
       {
         ui->active_node = node->key;
         result.left_pressed = mouse_left_pressed;
@@ -1587,5 +1658,50 @@ ui_comm_from_node(UI_Ctx *ui, UI_Node *node)
   }
   return(result);
 }
+
+// ///////////////////////////////////////////////
+// NOTE(erb): popup
+// ///////////////////////////////////////////////
+
+void
+ui_push_popup(UI_Ctx *ui, UI_Node *node)
+{
+  ui_push_parent_temp(ui, node);
+}
+
+void
+ui_pop_popup(UI_Ctx *ui)
+{
+  ui->popup = ui_pop_parent_temp(ui);
+}
+
+#define ui_popup(ui, node) DeferLoop(ui_push_popup(ui, node), ui_pop_popup(ui))
+
+void
+ui_push_center_popup(UI_Ctx *ui)
+{
+  Range_V2f root_rect = node_rng_v2f(ui->root);
+  V2f root_rect_size = rng_v2f_size(root_rect);
+  V2f size = v2f_hada(root_rect_size, v2f(0.4f, 0.7f));
+  size.x = CapBottom(size.x, 500);
+  size.y = CapBottom(size.y, 500);
+  Range_V2f rect = rng_v2f_center_size(rng_v2f_center(root_rect), size);
+  
+  ui_set_next_rect(ui, rect);
+  ui_set_next_debug_str(ui, S8("ui_ctx_popup_rect"));
+  UI_Node *node = ui_nodef(ui, UIFlags_Floating|UIFlags_ClipRectangle, S8Z());
+  ui_push_seed_key(ui, ui_keyf("ui_ctx_popup"));
+  
+  ui_push_popup(ui, node);
+}
+
+void
+ui_pop_center_popup(UI_Ctx *ui)
+{
+  ui_pop_seed_key(ui);
+  ui_pop_popup(ui);
+}
+
+#define ui_center_popup(ui) DeferLoop(ui_push_center_popup(ui), ui_pop_popup(ui))
 
 #include "ui_basic_widgets.c"

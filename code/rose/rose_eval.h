@@ -22,18 +22,30 @@ struct Expr_Value_List
 
 typedef enum Expr_Type
 {
+  ExprType_None,
   ExprType_B32,
   ExprType_U32,
   ExprType_Str8,
   ExprType_DateTime,
   ExprType_Event,
   ExprType_List,
+  ExprType_COUNT,
 } Expr_Type;
+
+typedef enum Expr_UI_Rule
+{
+  ExprUIRule_None,
+  ExprUIRule_Raw,
+  ExprUIRule_Calendar,
+  ExprUIRule_FocusEvent,
+  ExprUIRule_Columns,
+} Expr_UI_Rule;
 
 typedef struct Expr_Value Expr_Value;
 struct Expr_Value
 {
   Expr_Type type;
+  Expr_UI_Rule ui_rule;
   union
   {
     String8 str8;
@@ -41,13 +53,24 @@ struct Expr_Value
     B32 b32;
     Date_Time dt;
     Event *event;
-    Expr_Value_List list;
+    struct
+    {
+      Expr_Value_List list;
+      Expr_Type sub_type;
+    };
   };
   Expr_Value *next;
 };
 
-// TODO(erb): return error as well
-#define EXPR_FUNCTION_IMPL_FUNC(name) Expr_Value name(Arena *arena, Expr *expr, void *data)
+typedef struct Expr_Func_Impl_Result Expr_Func_Impl_Result;
+struct Expr_Func_Impl_Result
+{
+  Expr_Value value;
+  String8 error;
+};
+
+typedef struct Expr_Environment Expr_Environment;
+#define EXPR_FUNCTION_IMPL_FUNC(name) Expr_Func_Impl_Result name(Arena *arena, Expr_Environment *env, Expr_Value_List *arg_values, Expr_List *arg_exprs)
 typedef EXPR_FUNCTION_IMPL_FUNC(Expr_Function_Impl_Func);
 
 typedef struct Expr_Variable Expr_Variable;
@@ -58,15 +81,19 @@ struct Expr_Variable
   union
   {
     Expr_Value value;
-    Expr_Function_Impl_Func *func;
+    struct
+    {
+      Expr_Function_Impl_Func *func;
+      B32 only_expr_args;
+    };
   };
+  Expr_Variable *next;
 };
 
 typedef struct Expr_Environment Expr_Environment;
 struct Expr_Environment
 {
-  Expr_Variable *var_arr;
-  U32 var_count;
+  Expr_Variable *first_var;
   void *data;
 };
 

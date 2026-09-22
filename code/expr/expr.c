@@ -1,8 +1,21 @@
 Expr *
-expression_from_eat_token_list(Arena *arena, Token_Iterator *it, String8 *error);
+expr_from_token_it(Arena *arena, Token_Iterator *it, String8 *error);
+
+void
+expr_list_append(Expr_List *list, Expr *e)
+{
+  DLLQueueAppend(list->first, list->last, e);
+  list->count += 1;
+}
+
+void
+expr_list_remove(Expr_List *list, Expr *e)
+{
+  DLLRemove(list->first, list->last, e);
+}
 
 Expr_List 
-expression_list_from_eat_token_list(Arena *arena, Token_Iterator *it, String8 *error)
+expr_list_from_token_it(Arena *arena, Token_Iterator *it, String8 *error)
 {
   Assert(it != 0);
   
@@ -27,50 +40,54 @@ expression_list_from_eat_token_list(Arena *arena, Token_Iterator *it, String8 *e
     {
       case TokenKind_Operator:
       {
+        expr->kind = ExprKind_Binary;
+        
         if(0){}
+        else if(str8_equals(token->str8, S8("/" ))) expr->bin.kind = ExprBinaryKind_Div;
+        else if(str8_equals(token->str8, S8("+" ))) expr->bin.kind = ExprBinaryKind_Sum;
+        else if(str8_equals(token->str8, S8("-" ))) expr->bin.kind = ExprBinaryKind_Sub;
+        else if(str8_equals(token->str8, S8("*" ))) expr->bin.kind = ExprBinaryKind_Mul;
+        else if(str8_equals(token->str8, S8("%" ))) expr->bin.kind = ExprBinaryKind_Mod;
         
-        else if(str8_equals(token->str8, S8("/" ))) expr->kind = ExprKind_BinaryDiv;
-        else if(str8_equals(token->str8, S8("+" ))) expr->kind = ExprKind_BinarySum;
-        else if(str8_equals(token->str8, S8("-" ))) expr->kind = ExprKind_BinarySub;
-        else if(str8_equals(token->str8, S8("*" ))) expr->kind = ExprKind_BinaryMul;
-        else if(str8_equals(token->str8, S8("%" ))) expr->kind = ExprKind_BinaryMod;
+        else if(str8_equals(token->str8, S8("=="))) expr->bin.kind = ExprBinaryKind_Eq;
+        else if(str8_equals(token->str8, S8(">" ))) expr->bin.kind = ExprBinaryKind_Gt;
+        else if(str8_equals(token->str8, S8(">="))) expr->bin.kind = ExprBinaryKind_Ge;
+        else if(str8_equals(token->str8, S8("<" ))) expr->bin.kind = ExprBinaryKind_Lt;
+        else if(str8_equals(token->str8, S8("<="))) expr->bin.kind = ExprBinaryKind_Le;
         
-        else if(str8_equals(token->str8, S8("=="))) expr->kind = ExprKind_BinaryEq;
-        else if(str8_equals(token->str8, S8(">" ))) expr->kind = ExprKind_BinaryGt;
-        else if(str8_equals(token->str8, S8(">="))) expr->kind = ExprKind_BinaryGe;
-        else if(str8_equals(token->str8, S8("<" ))) expr->kind = ExprKind_BinaryLt;
-        else if(str8_equals(token->str8, S8("<="))) expr->kind = ExprKind_BinaryLe;
+        else if(str8_equals(token->str8, S8("&" ))) expr->bin.kind = ExprBinaryKind_BitAnd;
+        else if(str8_equals(token->str8, S8("|" ))) expr->bin.kind = ExprBinaryKind_BitOr;
         
-        else if(str8_equals(token->str8, S8("&" ))) expr->kind = ExprKind_BinaryBitAnd;
-        else if(str8_equals(token->str8, S8("|" ))) expr->kind = ExprKind_BinaryBitOr;
+        else if(str8_equals(token->str8, S8("&&"))) expr->bin.kind = ExprBinaryKind_LogicAnd;
+        else if(str8_equals(token->str8, S8("||"))) expr->bin.kind = ExprBinaryKind_LogicOr;
         
-        else if(str8_equals(token->str8, S8("&&"))) expr->kind = ExprKind_BinaryLogicAnd;
-        else if(str8_equals(token->str8, S8("||"))) expr->kind = ExprKind_BinaryLogicOr;
-        
-        else if(str8_equals(token->str8, S8("." ))) expr->kind = ExprKind_BinaryAccess;
+        else if(str8_equals(token->str8, S8("." ))) expr->bin.kind = ExprBinaryKind_Access;
         
         else *error = S8("unkown operator");
       } break;
       
       case TokenKind_Identifier:
       {
-        // NOTE(erb): simple identifier
-        expr->str8 = token->str8;
-        expr->kind = ExprKind_Identifier;
-        
-        // NOTE(erb): function parsing
         Token *paren_open = token_it_next_if_kind(it, TokenKind_ParenOpen);
-        if(paren_open != 0)
+        if(paren_open == 0) // NOTE(erb): simple identifier
         {
+          expr->kind = ExprKind_Primary;
+          expr->prim.kind = ExprPrimaryKind_Identifier;
+          expr->prim.str8 = token->str8;
+        }
+        else // NOTE(erb): function parsing
+        {
+          expr->kind = ExprKind_Function;
+          expr->func.name = token->str8;
           
-          for(Expr *last_arg = 0;;)
+          for(;;)
           {
-            Expr *arg = expression_from_eat_token_list(arena, it, error);
+            Expr *arg = expr_from_token_it(arena, it, error);
             if(error->value != 0 || arg == 0)
             {
               break;
             }
-            SLLQueueAppend(expr->right, last_arg, arg);
+            expr_list_append(&expr->func.args, arg);
             token_it_next_if_op_str8(it, S8(","));
           }
           
@@ -78,7 +95,6 @@ expression_list_from_eat_token_list(Arena *arena, Token_Iterator *it, String8 *e
           if(paren_close != 0)
           {
             expr->kind = ExprKind_Function;
-            token_it_next(it);
           }
           else
           {
@@ -89,23 +105,25 @@ expression_list_from_eat_token_list(Arena *arena, Token_Iterator *it, String8 *e
       
       case TokenKind_StrLiteral:
       {
-        expr->kind = ExprKind_StrLiteral;
-        expr->str8 = token->str8;
+        expr->kind = ExprKind_Primary;
+        expr->prim.kind = ExprPrimaryKind_StrLiteral;
+        expr->prim.str8 = token->str8;
       } break;
       
       case TokenKind_NumLiteral:
       {
-        expr->kind = ExprKind_NumLiteral;
-        expr->u32 = token->u32;
+        expr->kind = ExprKind_Primary;
+        expr->prim.kind = ExprPrimaryKind_NumLiteral;
+        expr->prim.u32 = token->u32;
       } break;
       
       case TokenKind_ParenOpen:
       {
-        token_it_next(it);
-        Expr *group = expression_from_eat_token_list(arena, it, error);
+        Expr *group = expr_from_token_it(arena, it, error);
         if(error->value == 0 && group != 0)
         {
-          if(token_it_peek_has_kind(it, TokenKind_ParenClose))
+          Token *close = token_it_next_if_kind(it, TokenKind_ParenClose);
+          if(close != 0)
           {
             expr = group;
           }
@@ -127,55 +145,34 @@ expression_list_from_eat_token_list(Arena *arena, Token_Iterator *it, String8 *e
       break;
     }
     Assert(expr != 0);
-    DLLQueueAppend(result.first, result.last, expr);
+    expr_list_append(&result, expr);
   }
   return(result);
 }
 
-B32
-expression_kind_is_binary_op(Expr_Kind kind)
-{
-  B32 result = (kind == ExprKind_BinarySum ||
-                kind == ExprKind_BinaryMul ||
-                kind == ExprKind_BinarySub ||
-                kind == ExprKind_BinaryDiv ||
-                kind == ExprKind_BinaryMod ||
-                
-                kind == ExprKind_BinaryEq ||
-                kind == ExprKind_BinaryGt ||
-                kind == ExprKind_BinaryGe ||
-                kind == ExprKind_BinaryLt ||
-                kind == ExprKind_BinaryLe ||
-                
-                kind == ExprKind_BinaryBitOr  ||
-                kind == ExprKind_BinaryBitAnd ||
-                
-                kind == ExprKind_BinaryLogicOr  ||
-                kind == ExprKind_BinaryLogicAnd ||
-                
-                kind == ExprKind_BinaryAccess);
-  return(result);
-}
-
 void
-expression_join_binary_op_kind(Expr_List *list, Expr_Kind kind, String8 *error)
+expr_join_binary(Expr_List *list, Expr_Binary_Kind bin_kind, String8 *error)
 {
-  Assert(expression_kind_is_binary_op(kind));
   for(EachNode(Expr, expr, list->first))
   {
-    if(expr->kind == kind && 
-       (expr->left == 0 && expr->right == 0))
+    if(expr->kind == ExprKind_Binary && 
+       expr->bin.kind == bin_kind && 
+       expr->bin.right == 0 && expr->bin.left == 0) // NOTE(erb): not joined yet
     {
       Expr *left = expr->prev;
       Expr *right = expr->next;
       if(left != 0 && right != 0)
       {
-        DLLRemove(list->first, list->last, left);
-        DLLRemove(list->first, list->last, right);
+        expr_list_remove(list, left);
+        expr_list_remove(list, right);
         left->prev = left->next = 0;
         right->prev = right->next = 0;
-        expr->left = left;
-        expr->right = right;
+        
+        expr->bin.right = right;
+        expr->bin.right->next = left;
+        
+        expr->bin.left = left;
+        expr->bin.left->prev = right;
       }
       else
       {
@@ -186,70 +183,37 @@ expression_join_binary_op_kind(Expr_List *list, Expr_Kind kind, String8 *error)
 }
 
 Expr *
-expression_from_eat_token_list(Arena *arena, Token_Iterator *it, String8 *error)
+expr_from_token_it(Arena *arena, Token_Iterator *it, String8 *error)
 {
-  Expr_List list = expression_list_from_eat_token_list(arena, it, error);
+  Expr_List list = expr_list_from_token_it(arena, it, error);
   
   if(error->value == 0)
   {
-    // NOTE(erb): special case access to add the global $ identifier
-    for(EachNode(Expr, expr, list.first))
+    Expr_Binary_Kind bin_kinds[] = 
     {
-      if(expr->kind == ExprKind_BinaryAccess)
-      {
-        Expr *left = expr->prev;
-        Expr *right = expr->next;
-        if(right != 0 && (left == 0 || left->kind != ExprKind_Identifier))
-        {
-          // NOTE(erb): only case where a expression is added through op parsing
-          left = PushStruct(arena, Expr);
-          left->kind = ExprKind_Identifier;
-          left->str8 = S8("$");
-          
-          DLLRemove(list.first, list.last, right);
-          right->prev = right->next = 0;
-          expr->right = right;
-          expr->left = left;
-        }
-        else if(right != 0 && left != 0)
-        {
-          DLLRemove(list.first, list.last, left);
-          DLLRemove(list.first, list.last, right);
-          left->prev = left->next = 0;
-          right->prev = right->next = 0;
-          expr->left = left;
-          expr->right = right;
-        }
-        else
-        {
-          *error = S8("expected left and right side operands");
-        }
-      }
-    }
-    
-    Expr_Kind op_kinds[] = 
-    {
-      ExprKind_BinaryBitAnd,
-      ExprKind_BinaryBitOr,
+      ExprBinaryKind_Access,
       
-      ExprKind_BinaryMod,
-      ExprKind_BinaryMul,
-      ExprKind_BinaryDiv,
-      ExprKind_BinarySum,
-      ExprKind_BinarySub,
+      ExprBinaryKind_BitAnd,
+      ExprBinaryKind_BitOr,
       
-      ExprKind_BinaryEq,
-      ExprKind_BinaryGt,
-      ExprKind_BinaryGe,
-      ExprKind_BinaryLt,
-      ExprKind_BinaryLe,
+      ExprBinaryKind_Mod,
+      ExprBinaryKind_Mul,
+      ExprBinaryKind_Div,
+      ExprBinaryKind_Sum,
+      ExprBinaryKind_Sub,
       
-      ExprKind_BinaryLogicAnd,
-      ExprKind_BinaryLogicOr,
+      ExprBinaryKind_Eq,
+      ExprBinaryKind_Gt,
+      ExprBinaryKind_Ge,
+      ExprBinaryKind_Lt,
+      ExprBinaryKind_Le,
+      
+      ExprBinaryKind_LogicAnd,
+      ExprBinaryKind_LogicOr,
     };
-    for(EachElement(Expr_Kind, kind, op_kinds))
+    for(EachElement(Expr_Kind, kind, bin_kinds))
     {
-      expression_join_binary_op_kind(&list, *kind, error);
+      expr_join_binary(&list, *kind, error);
       if(error->value != 0)
       {
         break;

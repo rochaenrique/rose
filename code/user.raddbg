@@ -41,12 +41,11 @@ window:
   size: 1363 944
   pos: 278 98
   monitor: "\\\\.\\DISPLAY1"
-  font_size: 14
   smooth_code_text: 1
   split_x
   panels:
   {
-    0.511294:
+    0.525401:
     {
       selected
       text:
@@ -110,90 +109,53 @@ window:
       text:
       {
         selected
-        expression: "file:\"C:/Users/erb/dev/rose/code/win32_ui_app.c\".data"
-        project: "C:/Users/erb/dev/rose/code/project.raddbg"
-        query:
-        {
-          input: "\n\n\"dt\""
-          cmd: search
-        }
-        cursor_line: 2144
-        cursor_column: 1
-        mark_line: 2144
-        mark_column: 1
-        cursor: 0x7d1a
-        mark: 0x7d1a
-      }
-      text:
-      {
         expression: "file:\"C:/Users/erb/dev/rose/code/base/base_string.c\".data"
         auto: 1
-        project: "C:/Users/erb/dev/rose/code/project.raddbg"
-        query:
-        {
-          input: "\nidentif"
-          cmd: search
-        }
-        cursor_line: 1
-        cursor_column: 1
-        mark_line: 1
-        mark_column: 1
-        cursor: 0x2949
-        mark: 0x2949
-      }
-      disasm: query:
-      {
-        input: ""
-        cmd: search
-      }
-      text:
-      {
-        expression: "file:\"C:/Users/erb/dev/rose/project.rose\".data"
-        project: "C:/Users/erb/dev/rose/code/project.raddbg"
-        query: input: ":"
-        cursor_line: 1
-        cursor_column: 1
-        mark_line: 1
-        mark_column: 1
-        cursor: 0x63
-        mark: 0x73
-      }
-      text:
-      {
-        expression: "file:\"C:/Users/erb/dev/rose/code/project.raddbg\".data"
         project: "C:/Users/erb/dev/rose/code/project.raddbg"
         query:
         {
           input: ""
           cmd: search
         }
-        cursor: 0x14ce
-        mark: 0x14ce
+        cursor_line: 1
+        cursor_column: 1
+        mark_line: 1
+        mark_column: 1
+        cursor: 0x2e65
+        mark: 0x2e65
+      }
+      text:
+      {
+        expression: "query:output"
+        query: input: ""
+        cursor: 0x5ef
+        mark: 0x5ef
       }
     }
-    0.488702:
+    0.474595:
     {
       0.720742:
       {
-        text:
-        {
-          expression: "file:\"C:/Users/erb/dev/rose/project.rose\".data"
-          project: "C:/Users/erb/dev/rose/code/project.raddbg"
-          query: input: ""
-          cursor_line: 1
-          cursor_column: 1
-          mark_line: 1
-          mark_column: 1
-          cursor: 0x0
-          mark: 0x0
-        }
-        watch: expression: "query:breakpoints"
         watch:
         {
           selected
           expression: ""
-          normal: 0.218943 0.781057
-          watch_expression: expression: value
+          normal: 0.307602 0.692398
+          table_2_cols: 0.614790 0.385210
+          watch_expression: expression: "\n\n\n\n\n"
+          watch_expression: expression: writer
+          watch_expression: expression: "cell->flags & UICellFlags_DrawExpandArrowOpen"
+          watch_expression: expression: "cell->flags & UICellFlags_DrawExpandArrowOpen"
+          watch_expression: expression: "ui->input.cursor_delta.x"
+          watch_expression: expression: node_width
+          watch_expression: expression: "ui->input.cursor_delta.x / node_width"
+        }
+        text:
+        {
+          expression: ""
+          cursor: 0x0
+          mark: 0x0
+          show_line_numbers: 1
         }
       }
       0.279258:
@@ -203,6 +165,11 @@ window:
           selected
           expression: "query:call_stack"
           call_stack_frame: 0.050000 0.689877 0.260123
+          query:
+          {
+            cmd: search
+            input: pre
+          }
         }
         watch: expression: "query:breakpoints"
         watch: expression: "query:targets"
@@ -210,6 +177,7 @@ window:
     }
   }
   maximized
+  font_size: 13
 }
 current_path: "C:/Users/erb/dev/rose/code"
 keybindings:
@@ -433,6 +401,14 @@ debug_info:
   timestamp: 66221792777972
   project: "C:/Users/erb/dev/marker/code/project.raddbg"
 }
+breakpoint:
+{
+  project: "C:/Users/erb/dev/rose/code/project.raddbg"
+  address_location: "ui->open_popup_key"
+  break_on_write: 1
+  break_on_read: 0
+  hit_count: 0
+}
 debug_info:
 {
   path: "C:/Users/erb/dev/rose/code/build/win32_ui_main.pdb"
@@ -442,6 +418,6 @@ debug_info:
 debug_info:
 {
   path: "C:/Users/erb/dev/rose/code/build/win32_ui_app.pdb"
-  timestamp: 66225093006090
+  timestamp: 66226160589358
   project: "C:/Users/erb/dev/rose/code/project.raddbg"
 }
