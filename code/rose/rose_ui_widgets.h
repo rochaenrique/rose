@@ -67,6 +67,7 @@ struct UI_Lister_Result
 {
   UI_Node *lister;
   UI_Cell *selected;
+  UI_Cell *first;
   String8 input_str;
 };
 

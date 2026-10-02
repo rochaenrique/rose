@@ -141,7 +141,7 @@ pad2_xy(F32 x, F32 y)
 }
 
 UI_Radius
-rad(F32 value, UI_Radius_Kind kind)
+ui_rad(F32 value, UI_Radius_Kind kind)
 {
   UI_Radius result = {0};
   result.value = value;
@@ -150,9 +150,9 @@ rad(F32 value, UI_Radius_Kind kind)
 }
 
 UI_Radius
-rad_abs(F32 value)
+ui_rad_abs(F32 value)
 {
-  UI_Radius result = rad(value, UIRadiusKind_Absolute);
+  UI_Radius result = ui_rad(value, UIRadiusKind_Absolute);
   return(result);
 }
 
@@ -174,7 +174,7 @@ node_total_child_gap(UI_Node *node)
 }
 
 Range_V2f
-node_rng_v2f(UI_Node *node)
+ui_node_rng_v2f(UI_Node *node)
 {
   Assert(node);
   Range_V2f result = rng_v2f_point_add(node->pos, node->size);
@@ -182,9 +182,9 @@ node_rng_v2f(UI_Node *node)
 }
 
 Range_V2f
-node_inner_rng_v2f(UI_Node *node)
+ui_node_rng_v2f_inner(UI_Node *node)
 {
-  Range_V2f result = node_rng_v2f(node);
+  Range_V2f result = ui_node_rng_v2f(node);
   result.min = v2f_add(result.min, node->padding.left_top);
   result.max = v2f_sub(result.max, node->padding.right_bottom);
   return(result);
@@ -196,6 +196,7 @@ node_inner_rng_v2f(UI_Node *node)
 #define UIResetStack(ctx, label)               ((ctx)->label##_stack_count = 0)
 #define UIGetStackValue(ctx, label)       (Assert((ctx)->label##_stack_count >= 1), (ctx)->label##_stack[ctx->label##_stack_count-1])
 #define UIHasNextValue(ctx, label)        ((ctx)->has_next_##label)
+#define UINextValue(ctx, label)           (Assert(UIHasNextValue(ctx, label)), (ctx)->next_##label)
 #define UIPopNextValue(ctx, label)        (Assert(UIHasNextValue(ctx, label)), (ctx)->has_next_##label = false, (ctx)->next_##label)
 #define UIGetNextOrStackValue(ctx, label) (UIHasNextValue((ctx), label) ? UIPopNextValue((ctx), label) : UIGetStackValue((ctx), label))
 
@@ -322,11 +323,11 @@ UI_SET_NEXT_AND_PUSH_POP_FUNC(F32, border_thickness)
 #define ui_corner_radius(context, value) DeferLoop(ui_push_corner_radius(context, value), ui_pop_corner_radius(context))
 UI_SET_NEXT_AND_PUSH_POP_FUNC(UI_Radius, corner_radius)
 
-#define ui_corner_radius_abs(context, value) ui_corner_radius(ui, rad_abs(value))
+#define ui_corner_radius_abs(context, value) ui_corner_radius(ui, ui_rad_abs(value))
 void
 ui_set_next_corner_radius_abs(UI_Ctx *ui, F32 value)
 {
-  ui_set_next_corner_radius(ui, rad_abs(value));
+  ui_set_next_corner_radius(ui, ui_rad_abs(value));
 }
 
 // NOTE(erb): specify all the border at once
@@ -336,7 +337,7 @@ ui_border_color(ui, (color)) \
 ui_border_thickness(ui, (thick)) \
 ui_corner_radius(ui, radius)
 
-#define ui_border_abs(ui, color, thick, radius) ui_border(ui, color, thick, rad_abs(radius))
+#define ui_border_abs(ui, color, thick, radius) ui_border(ui, color, thick, ui_rad_abs(radius))
 
 void 
 ui_set_next_border(UI_Ctx *ui, V4f color, F32 thick, UI_Radius radius)
@@ -349,7 +350,7 @@ ui_set_next_border(UI_Ctx *ui, V4f color, F32 thick, UI_Radius radius)
   }
 }
 
-#define ui_set_next_border_abs(ui, color, thick, radius) ui_set_next_border(ui, color, thick, rad_abs(radius))
+#define ui_set_next_border_abs(ui, color, thick, radius) ui_set_next_border(ui, color, thick, ui_rad_abs(radius))
 
 void
 ui_set_next_background_color(UI_Ctx *ui, V4f color)
@@ -806,7 +807,7 @@ draw_node_cmd(Arena *arena, UI_Draw_Cmd_List *draw_cmds, UI_Node *node)
 	if(node->flags & UIFlags_DrawBackGround)
 	{
 		UI_Draw_Cmd *cmd = push_draw_cmd(arena, draw_cmds, UIDrawKind_Rect);
-		cmd->range = node_rng_v2f(node);
+		cmd->range = ui_node_rng_v2f(node);
     cmd->background = node->background;
 		if(node->flags & UIFlags_DrawRounded)
 		{
@@ -817,7 +818,7 @@ draw_node_cmd(Arena *arena, UI_Draw_Cmd_List *draw_cmds, UI_Node *node)
 	if(node->flags & UIFlags_DrawBorder)
 	{
     UI_Draw_Cmd *cmd = push_draw_cmd(arena, draw_cmds, UIDrawKind_RectLines);
-		cmd->range = node_rng_v2f(node);
+		cmd->range = ui_node_rng_v2f(node);
     cmd->background = grad2_single(node->border_color);
     cmd->rect.border_thickness = node->border_thickness;
 		if(node->flags & UIFlags_DrawRounded)
@@ -849,7 +850,7 @@ draw_node_cmd(Arena *arena, UI_Draw_Cmd_List *draw_cmds, UI_Node *node)
 		{
       UI_Draw_Cmd *cmd = push_draw_cmd_text(arena, draw_cmds, text);
 			cmd->text.content = text->content;
-      cmd->range = node_rng_v2f(node);
+      cmd->range = ui_node_rng_v2f(node);
     }
 	}
   
@@ -861,7 +862,7 @@ draw_node_cmd(Arena *arena, UI_Draw_Cmd_List *draw_cmds, UI_Node *node)
     {
       UI_Draw_Cmd *cmd = push_draw_cmd(arena, draw_cmds, UIDrawKind_Rect);
       cmd->background = grad2_single(with_alpha(color_yellow, 0.5f));
-      cmd->range = node_rng_v2f(node);
+      cmd->range = ui_node_rng_v2f(node);
     }
   }
   
@@ -872,7 +873,7 @@ draw_node_cmd(Arena *arena, UI_Draw_Cmd_List *draw_cmds, UI_Node *node)
     {
       UI_Draw_Cmd *cmd = push_draw_cmd(arena, draw_cmds, UIDrawKind_RectLines);
       cmd->background = grad2_single(with_alpha(color_debug, 0.8f));
-      cmd->range = node_rng_v2f(node);
+      cmd->range = ui_node_rng_v2f(node);
       cmd->rect.border_thickness = 2.0f;
     }
   }
@@ -884,7 +885,7 @@ draw_node_cmd(Arena *arena, UI_Draw_Cmd_List *draw_cmds, UI_Node *node)
     {
       UI_Draw_Cmd *cmd = push_draw_cmd(arena, draw_cmds, UIDrawKind_RectLines);
       cmd->background = grad2_single(color_green);
-      cmd->range = node_inner_rng_v2f(node);
+      cmd->range = ui_node_rng_v2f_inner(node);
       cmd->rect.border_thickness = 2.0f;
     }
   }
@@ -901,11 +902,11 @@ draw_step(Arena *arena, UI_Draw_Cmd_List *draw_cmds, UI_Node *node)
   if(node->flags & UIFlags_ClipRectangle)
   {
     UI_Draw_Cmd *cmd = push_draw_cmd(arena, draw_cmds, UIDrawKind_ClipBegin);
-    cmd->range = node_inner_rng_v2f(node);
+    cmd->range = ui_node_rng_v2f_inner(node);
     
     // NOTE(erb): to avoid overlapping from scissor regions
     AssertImplies(node->parent != 0, 
-                  rng_v2f_contains_inclusive_range(node_rng_v2f(node->parent), 
+                  rng_v2f_contains_inclusive_range(ui_node_rng_v2f(node->parent), 
                                                    cmd->range));
   }
   
@@ -948,7 +949,7 @@ ui_init(UI_Ctx *ctx, Arena *arena)
 {
 	ctx->arena = push_sub_arena(arena, sizeof(UI_Node)*500);
 	ctx->last_arena = push_sub_arena(arena, sizeof(UI_Node)*500);
-  ctx->input_state_arena = push_sub_arena(arena, sizeof(UI_Line_Input_State)*64);
+  ctx->input_state_arena = push_sub_arena(arena, (sizeof(UI_Line_Input_State) + 512)*32);
 }
 
 void 
@@ -1061,7 +1062,7 @@ ui_begin_frame(UI_Ctx *ctx, UI_Font_Face face, GFX_Event_List *events, Range_V2f
   ui_push_seed_key(ctx, ui_key_null());
 	ui_push_sizing_x(ctx, ui_fit());
 	ui_push_sizing_y(ctx, ui_fit());
-	ui_push_corner_radius(ctx, rad_abs(2));
+	ui_push_corner_radius(ctx, ui_rad_abs(2));
 	ui_push_border_thickness(ctx, 1);
   ui_push_layout_axis(ctx, Axis2_X);
 	
@@ -1109,7 +1110,7 @@ position_align_step(UI_Node *node)
   F32 axis_align_multiplier = get_align_multiplier(node->align[axis]);
   F32 cross_align_multiplier = get_align_multiplier(node->align[cross]);
   
-  Range_V2f inner = node_inner_rng_v2f(node);
+  Range_V2f inner = ui_node_rng_v2f_inner(node);
 	V2f advance_pos = inner.start;
   
   V2f container_space = rng_v2f_size(inner);
@@ -1373,13 +1374,13 @@ ui_node_make(UI_Ctx *ctx, UI_Flags flags, UI_Key key, String8 str)
 }
 
 UI_Key
-ui_keyf_varg(String8 label, va_list args_src)
+ui_keyf_varg(const char *fmt, va_list args_src)
 {
   va_list args;
   va_copy(args, args_src);
   
   Scratch scratch = scratch_begin(0, 0);
-  String8 resolved_key = push_str8f_varg(scratch.arena, push_cstr(scratch.arena, label), args_src);
+  String8 resolved_key = push_str8f_varg(scratch.arena, fmt, args_src);
   UI_Key key = ui_key_make(str8_hash(resolved_key));
   scratch_end(&scratch);
   va_end(args);
@@ -1387,14 +1388,11 @@ ui_keyf_varg(String8 label, va_list args_src)
 }
 
 UI_Key
-ui_keyf(const char *label, ...)
+ui_keyf(const char *fmt, ...)
 {
   va_list args;
-  va_start(args, label);
-  Scratch scratch = scratch_begin(0, 0);
-  String8 s = push_str8_from_cstr(scratch.arena, (char *)label);
-  UI_Key key = ui_keyf_varg(s, args);
-  scratch_end(&scratch);
+  va_start(args, fmt);
+  UI_Key key = ui_keyf_varg(fmt, args);
   va_end(args);
   return(key);
 }
@@ -1571,11 +1569,11 @@ ui_comm_from_node(UI_Ctx *ui, UI_Node *node)
                           && node->sizing[Axis2_Y] == UISizing_Fixed);
     if(has_fixed_rect && !(node->flags & UIFlags_CommRectFromCached))
     {
-      rect = node_rng_v2f(node);
+      rect = ui_node_rng_v2f(node);
     }
     else if(cached)
     {
-      rect = node_rng_v2f(cached);
+      rect = ui_node_rng_v2f(cached);
     }
     
     result.hovered = rng_v2f_contains_inclusive(rect, ui->input.cursor);
@@ -1632,7 +1630,7 @@ ui_comm_from_node(UI_Ctx *ui, UI_Node *node)
       ui->cursor_api.set_func(node->hover_cursor, ui->cursor_api.data);
       if(node->flags & UIFlags_HoverEffect)
       {
-        // TODO(erb): test effect
+        // TODO(erb): this is test code
         F32 a = (is_active ? 0.75f : 0.5f); 
         V4f accent = v4f_lerp(node->background.color0, color_white, a);
         node->background = grad2(node->background.color0,
@@ -1680,7 +1678,7 @@ ui_pop_popup(UI_Ctx *ui)
 void
 ui_push_center_popup(UI_Ctx *ui)
 {
-  Range_V2f root_rect = node_rng_v2f(ui->root);
+  Range_V2f root_rect = ui_node_rng_v2f(ui->root);
   V2f root_rect_size = rng_v2f_size(root_rect);
   V2f size = v2f_hada(root_rect_size, v2f(0.4f, 0.7f));
   size.x = CapBottom(size.x, 500);

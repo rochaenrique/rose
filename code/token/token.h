@@ -14,6 +14,7 @@ typedef enum Token_Kind
   TokenKind_ParenClose,
   TokenKind_ScopeOpen,
   TokenKind_ScopeClose,
+  TokenKind_COUNT,
 } Token_Kind;
 
 typedef struct Token Token;
@@ -23,7 +24,6 @@ struct Token
   Token_Kind kind;
   String8 str8;
   B32 is_postfix;
-  
   U32 u32;
 };
 
@@ -32,6 +32,7 @@ struct Token_List
 {
   Token *first;
   Token *last;
+  U32 count;
 };
 
 typedef struct Token_Iterator Token_Iterator;

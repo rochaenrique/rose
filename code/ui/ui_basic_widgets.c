@@ -301,7 +301,7 @@ ui_line_input_state_from_key(UI_Ctx *ui, UI_Key key)
     {
       result = PushStruct(&ui->input_state_arena, UI_Line_Input_State);
       result->key = key;
-      result->writer = push_str8_writer(&ui->input_state_arena, KB(1)); // TODO(erb): arbitrary size here
+      result->writer = push_str8_writer(&ui->input_state_arena, 512); // TODO(erb): arbitrary size here
       result->created_frame = ui->frame_tick;
       ui->input_state_count++;
     }
@@ -387,8 +387,8 @@ ui_line_input_update_state(UI_Ctx *ui, UI_Line_Input_State *state)
       ui_push_border_thickness(ui, 2.0f);
     }
     
+    ui_push_sizing_x(ui, ui_grow());
     ui_set_next_debug_str(ui, S8("line_input_container"));
-    ui_set_next_sizing_x(ui, ui_grow());
     ui_set_next_hover_cursor(ui, GFXCursorKind_Beam);
     container = ui_node_make(ui, UIFlags_DrawBorder
                              |UIFlags_DrawRounded
@@ -397,6 +397,7 @@ ui_line_input_update_state(UI_Ctx *ui, UI_Line_Input_State *state)
                              |UIFlags_ClipRectangle
                              |UIFlags_DontSeedKey, 
                              key, S8Z());
+    ui_pop_sizing_x(ui);
     container->size.y = (text_size.y + padding_axis_sum(container->padding, Axis2_Y));
     container->sizing[Axis2_Y] = UISizing_Fixed;
     
@@ -414,7 +415,7 @@ ui_line_input_update_state(UI_Ctx *ui, UI_Line_Input_State *state)
   B32 mouse_action_requested = (out.left_down || out.left_pressed);
   if(out.node)
   {
-    Range_V2f inner = node_inner_rng_v2f(out.node);
+    Range_V2f inner = ui_node_rng_v2f_inner(out.node);
     inner_x = rng_v2f_axis(inner, Axis2_X);
     input_pos = inner.min;
     
@@ -518,7 +519,7 @@ ui_toggle_switch(UI_Ctx *ui, B32 *out_b32)
   UI_Node *node = 0;
   
   ui_background_color(ui, (*out_b32 ? on_color : off_color))
-    ui_border(ui, border_color, 2.f, rad(.3f, UIRadiusKind_PercentOfY))
+    ui_border(ui, border_color, 2.f, ui_rad(.3f, UIRadiusKind_PercentOfY))
     ui_sizing_x(ui, ui_fixed(60))
     ui_sizing_y(ui, ui_fixed(30))
   {
@@ -541,7 +542,7 @@ ui_toggle_switch(UI_Ctx *ui, B32 *out_b32)
     if(comm.node != 0)
     {
       // NOTE(erb): inner indicator
-      Range_V2f container = node_inner_rng_v2f(comm.node);
+      Range_V2f container = ui_node_rng_v2f_inner(comm.node);
       V2f container_size = rng_v2f_size(container);
       
       Range_V2f indicator_rng = container; 
@@ -584,7 +585,7 @@ ui_rng_i32_input_compact(UI_Ctx *ui, I32 *value, Range_I32 range, String8 format
   {
     if(comm.node != 0)
     {
-      Range_V2f internal = node_rng_v2f(comm.node);
+      Range_V2f internal = ui_node_rng_v2f(comm.node);
       F32 total_width = (internal.max.x - internal.min.x);
       
       F32 progress_width = (F32)(*value)/rng_i32_size(range) * total_width;
@@ -622,7 +623,7 @@ ui_rng_f32_slider(UI_Ctx *ui, F32 *value, Range_F32 range)
   // NOTE(erb): this is done like this so the caller can overide with "ui_set_next_..."
   UI_Node *node = 0;
   
-  ui_border(ui, border_color, 2.f, rad(.3f, UIRadiusKind_PercentOfY))
+  ui_border(ui, border_color, 2.f, ui_rad(.3f, UIRadiusKind_PercentOfY))
     ui_sizing_x(ui, ui_fixed(100))
     ui_sizing_y(ui, ui_fixed(30))
   {
@@ -637,7 +638,7 @@ ui_rng_f32_slider(UI_Ctx *ui, F32 *value, Range_F32 range)
   UI_Comm comm = ui_comm_from_node(ui, node);
   if(comm.node != 0)
   {
-    Range_V2f node_rng = node_rng_v2f(comm.node);
+    Range_V2f node_rng = ui_node_rng_v2f(comm.node);
     F32 node_width = (node_rng.max.x - node_rng.min.x);
     
     if(comm.left_dragging)

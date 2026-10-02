@@ -1,11 +1,11 @@
 # TODO
 
 ## Now
- - Watch Window
+ - Watch Window based App   
    - Tabs be watch window with set expr
      - Maybe change views to be a "context for expr ui rule"
-
- - Structured expression editor (ui?)
+     - Views to be the context to an expression
+       - Expr might produce a UI piece that uses a View
 
  - eval filtering function
 
@@ -21,8 +21,17 @@
      - Calendar
 
  - popups to use cell lister
-   - Add a single popup in the UI state that "can" be the center
+   - Color picker popup to use UI_Ctx popup
    - CONTINUE CLEANUP
+
+ - Structured expression editor (ui?)
+   - Cleaner adding expressions
+     - Deleting (with free list & stuff)
+     - Add mark
+   - Edit string literals & identifier (maybe with a string pool or smth)
+     - Since we are the ones creating it might be possible (hash expr?)
+     - Worst case is just copying into I guess
+   - Make it so typing creates new token before/after??
 
 ## Fixes
  - Make nill ui node

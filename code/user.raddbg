@@ -47,7 +47,6 @@ window:
   {
     0.525401:
     {
-      selected
       text:
       {
         expression: "file:\"C:/Users/erb/dev/marker/code/examples/linux_gfx.c\".data"
@@ -109,7 +108,7 @@ window:
       text:
       {
         selected
-        expression: "file:\"C:/Users/erb/dev/rose/code/base/base_string.c\".data"
+        expression: "file:\"C:/Users/erb/dev/rose/code/ui/ui_basic_widgets.c\".data"
         auto: 1
         project: "C:/Users/erb/dev/rose/code/project.raddbg"
         query:
@@ -121,8 +120,8 @@ window:
         cursor_column: 1
         mark_line: 1
         mark_column: 1
-        cursor: 0x2e65
-        mark: 0x2e65
+        cursor: 0x2c93
+        mark: 0x2c93
       }
       text:
       {
@@ -131,24 +130,26 @@ window:
         cursor: 0x5ef
         mark: 0x5ef
       }
+      text:
+      {
+        expression: "file:\"C:/Users/erb/dev/rose/code/win32_ui_app.c\".data"
+        project: "C:/Users/erb/dev/rose/code/project.raddbg"
+        query: input: ""
+        cursor: 0x1d5a8
+        mark: 0x1d5a8
+      }
     }
     0.474595:
     {
       0.720742:
       {
+        selected
         watch:
         {
           selected
           expression: ""
-          normal: 0.307602 0.692398
+          normal: 0.412028 0.587972
           table_2_cols: 0.614790 0.385210
-          watch_expression: expression: "\n\n\n\n\n"
-          watch_expression: expression: writer
-          watch_expression: expression: "cell->flags & UICellFlags_DrawExpandArrowOpen"
-          watch_expression: expression: "cell->flags & UICellFlags_DrawExpandArrowOpen"
-          watch_expression: expression: "ui->input.cursor_delta.x"
-          watch_expression: expression: node_width
-          watch_expression: expression: "ui->input.cursor_delta.x / node_width"
         }
         text:
         {
@@ -176,8 +177,8 @@ window:
       }
     }
   }
-  maximized
   font_size: 13
+  maximized
 }
 current_path: "C:/Users/erb/dev/rose/code"
 keybindings:
@@ -418,6 +419,6 @@ debug_info:
 debug_info:
 {
   path: "C:/Users/erb/dev/rose/code/build/win32_ui_app.pdb"
-  timestamp: 66226160589358
+  timestamp: 66227177134839
   project: "C:/Users/erb/dev/rose/code/project.raddbg"
 }

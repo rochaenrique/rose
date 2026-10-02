@@ -124,8 +124,8 @@ ui_color_picker_popup(UI_Ctx *ui, V2f start_position, B32 *is_open, V4f *color)
   {
     window->pos = window_comm.node->pos;
     
-    Range_V2f root = node_rng_v2f(ui->root);
-    Range_V2f range = node_rng_v2f(window_comm.node);
+    Range_V2f root = ui_node_rng_v2f(ui->root);
+    Range_V2f range = ui_node_rng_v2f(window_comm.node);
     
     for(U32Each(axis, 1))
     {
@@ -329,7 +329,7 @@ ui_date_time_range_picker(UI_Ctx *ui, Date_Input_State *state, Date_Time *start,
           UI_Node *cached = ui_node_from_key(ui, calendar_container->key);
           if(cached != 0)
           {
-            rect = node_inner_rng_v2f(cached);
+            rect = ui_node_rng_v2f_inner(cached);
           }
         }
         V2f rect_size = rng_v2f_size(rect);
@@ -465,7 +465,7 @@ ui_date_time_range_picker(UI_Ctx *ui, Date_Input_State *state, Date_Time *start,
         UI_Node *cached = ui_node_from_key(ui, time_line_container->key);
         if(cached != 0)
         {
-          rect = node_inner_rng_v2f(cached);
+          rect = ui_node_rng_v2f_inner(cached);
           V2f rect_size = rng_v2f_size(rect);
           
           Gradient2 base_gradient = grad2_single(picker->background.color0);
@@ -595,7 +595,7 @@ ui_cell_lister_input(UI_Ctx *ui, String8 label)
 }
 
 void
-ui_cell_lister_content_begin(UI_Ctx *ui)
+ui_cell_lister_content_push(UI_Ctx *ui)
 {
   ui_set_next_layout_axis(ui, Axis2_X);
   ui_set_next_sizing(ui, ui_grow(), ui_grow());
@@ -633,7 +633,7 @@ ui_cell_lister_scroll(UI_Ctx *ui, UI_Key scroll_key, F32 view_size, F32 list_tot
     UI_Node *cached_container = ui_node_from_key(ui, container->key);
     if(cached_container != 0)
     {
-      Range_V2f container_rng = node_inner_rng_v2f(cached_container);
+      Range_V2f container_rng = ui_node_rng_v2f_inner(cached_container);
       F32 scroll_container_height = (container_rng.max.y - container_rng.min.y);
       
       F32 t = (list_total_size > 0) ? (view_size/list_total_size) : 0.0f;
@@ -695,7 +695,7 @@ ui_cell_lister_scroll(UI_Ctx *ui, UI_Key scroll_key, F32 view_size, F32 list_tot
 }
 
 void
-ui_cell_lister_content_end(UI_Ctx *ui)
+ui_cell_lister_content_pop(UI_Ctx *ui)
 {
   // NOTE(erb): end lister
   ui_pop_parent(ui);
@@ -710,6 +710,7 @@ struct UI_Lister_Items_Result
   
   I32 scroll_clicks_y;
   UI_Cell *selected;
+  UI_Cell *first;
 };
 
 B32
@@ -878,7 +879,7 @@ ui_cell_lister_items(UI_Ctx *ui, UI_Cell *cell_arr, U32 cell_count, String8 filt
     UI_Comm container_comm = ui_comm_from_node(ui, container);
     if(container_comm.node != 0)
     {
-      container_rng = node_rng_v2f(container_comm.node);
+      container_rng = ui_node_rng_v2f(container_comm.node);
       if(!should_shrink_y)
       {
         items_wrapper_flags |= UIFlags_Floating;
@@ -899,7 +900,7 @@ ui_cell_lister_items(UI_Ctx *ui, UI_Cell *cell_arr, U32 cell_count, String8 filt
     {
       UI_Key first_item_key = ui_keyf("first_display_item");
       UI_Node *first_cached_item = ui_node_from_key(ui, first_item_key);
-      F32 item_height = (first_cached_item != 0) ? rng_v2f_size(node_rng_v2f(first_cached_item)).y : 0;
+      F32 item_height = (first_cached_item != 0) ? rng_v2f_size(ui_node_rng_v2f(first_cached_item)).y : 0;
       F32 container_height = (container_rng.max.y - container_rng.min.y);
       result.view_height = container_height;
       result.list_item_height = item_height;
@@ -930,6 +931,10 @@ ui_cell_lister_items(UI_Ctx *ui, UI_Cell *cell_arr, U32 cell_count, String8 filt
         if(show)
         {
           UI_Key key = (is_first ? first_item_key : ui_keyf("cell_item_lister_%p", cell));
+          if(is_first)
+          {
+            result.first = cell;
+          }
           B32 cell_selected = ui_cell(ui, cell, key);
           if(cell_selected)
           {
@@ -946,80 +951,131 @@ ui_cell_lister_items(UI_Ctx *ui, UI_Cell *cell_arr, U32 cell_count, String8 filt
   return(result);
 }
 
+UI_Lister_Items_Result
+ui_cell_lister_scroll_content(UI_Ctx *ui, UI_Cell *cell_arr, U32 cell_count, String8 filter_str)
+{
+  UI_Key scroll_key = ui_keyf("scroll_movable");
+  UI_Node *scroll = ui_node_from_key(ui, scroll_key);
+  F32 scroll_offset = (scroll != 0) ? scroll->scroll_offset : 0.0f;
+  
+  ui_cell_lister_content_push(ui);
+  UI_Lister_Items_Result items_result = ui_cell_lister_items(ui, cell_arr, cell_count, 
+                                                             filter_str, scroll_offset, 
+                                                             false);
+  ui_cell_lister_scroll(ui, scroll_key, 
+                        items_result.view_height, 
+                        items_result.list_total_height, 
+                        items_result.list_item_height, 
+                        items_result.scroll_clicks_y);
+  ui_cell_lister_content_pop(ui);
+  return(items_result);
+}
+
 UI_Lister_Result
-ui_cell_lister(UI_Ctx *ui, String8 search_label, UI_Key key, UI_Cell *cell_arr, U32 cell_count)
+ui_cell_lister_list(UI_Ctx *ui, UI_Key key, UI_Cell *cell_arr, U32 cell_count, String8 filter_str)
+{
+  UI_Lister_Result result = {0};
+  result.lister = ui_cell_lister_begin(ui, key);
+  result.input_str = filter_str;
+  {
+    UI_Lister_Items_Result items_result = ui_cell_lister_scroll_content(ui, cell_arr, cell_count, filter_str);
+    result.first = items_result.first;
+    result.selected = items_result.selected;
+  }
+  ui_cell_lister_end(ui);
+  return(result);
+}
+
+UI_Lister_Result
+ui_cell_lister_filtered(UI_Ctx *ui, String8 label, UI_Key key, UI_Cell *cell_arr, U32 cell_count)
 {
   UI_Lister_Result result = {0};
   
-  UI_Node *lister = ui_cell_lister_begin(ui, key);
+  result.lister = ui_cell_lister_begin(ui, key);
   {
-    UI_Line_Input_State *input = ui_cell_lister_input(ui, search_label);
+    UI_Line_Input_State *input = ui_cell_lister_input(ui, label);
     result.input_str = input->writer.str;
     
-    UI_Key scroll_key = ui_keyf("scroll_movable");
-    UI_Node *scroll = ui_node_from_key(ui, scroll_key);
-    F32 scroll_offset = (scroll != 0) ? scroll->scroll_offset : 0.0f;
-    
-    ui_cell_lister_content_begin(ui);
-    UI_Lister_Items_Result items_result = ui_cell_lister_items(ui, cell_arr, cell_count, 
-                                                               result.input_str, scroll_offset, 
-                                                               false);
+    UI_Lister_Items_Result items_result = ui_cell_lister_scroll_content(ui, cell_arr, cell_count, result.input_str);
+    result.first = items_result.first;
     result.selected = items_result.selected;
-    ui_cell_lister_scroll(ui, scroll_key, 
-                          items_result.view_height, 
-                          items_result.list_total_height, 
-                          items_result.list_item_height, 
-                          items_result.scroll_clicks_y);
-    ui_cell_lister_content_end(ui);
   }
   ui_cell_lister_end(ui);
-  
-  result.lister = lister;
   return(result);
 }
 
 typedef struct UI_Lister_Popup_Result UI_Lister_Popup_Result;
 struct UI_Lister_Popup_Result
 {
-  B32 pressed_out;
+  B32 canceled;
   UI_Lister_Result lister;
 };
 
-UI_Lister_Popup_Result
-ui_cell_lister_floating_popup(UI_Ctx *ui, V2f top_left, UI_Key key, UI_Cell *cell_arr, U32 cell_count, String8 search_label)
+B32
+ui_floating_popup_push(UI_Ctx *ui, UI_Key key, V2f top_left)
 {
   ui_set_next_sizing_x(ui, ui_fixed(200));
   ui_set_next_floating_pos(ui, top_left);
   UI_Node *popup = ui_node_make(ui, UIFlags_Comm|UIFlags_Floating, key, S8Z());
+  ui_push_popup(ui, popup);
+  ui_push_seed_key(ui, popup->key);
+  //ui_push_border_abs(ui, v4ff(0), 0, 0);
   
+  // NOTE(erb): Hack to achieve the desired event bubling. Because the lister collects the events (selections)
+  // on each cell, we collect the events for the popup before, so that at the end of the first interaction frame, 
+  // the correct 'active' node is a cell item and NOT the popup.
+  // 
+  // How it would work if we collected after: 
+  //  ``
+  //  result.lister = ui_cell_lister(ui, S8Z(), ui_keyf("tab_panel_popup"), cell_arr, ViewKind_COUNT);
+  //  result.pressed_out = (result.lister.selected == 0) && ui_comm_from_node(ui, popup).pressed_out;
+  //  ``
+  //  1. click on cell in the UI
+  //  2. ui_comm(cell) -> cell becomes hot -> cell becomes active
+  //  3. ui_comm(popup) -> popup becomes hot -> popup becomes active
+  //  4. release on cell in the UI
+  //  5. ui_comm(cell) -> cell becomes hot -> not active so nothing happens -> result.lister.selected will always be 0
+  //  6. ui_comm(popup) -> popup becomes hot -> popup is active from last frame -> produces pressed_out
+  //
+  // If we call ui_comm(popup) before then it works out as intented. 
+  
+  B32 pressed_out = ui_comm_from_node(ui, popup).pressed_out;
+  return(pressed_out);
+}
+
+void
+ui_floating_popup_pop(UI_Ctx *ui)
+{
+  ui_pop_seed_key(ui);
+  ui_pop_popup(ui);
+  //ui_pop_border(ui);
+}
+
+UI_Lister_Popup_Result
+ui_cell_lister_filtered_floating_popup(UI_Ctx *ui, V2f top_left, UI_Key key, UI_Cell *cell_arr, U32 cell_count, String8 label)
+{
   UI_Lister_Popup_Result result = {0};
-  ui_popup(ui, popup) 
-    ui_seed_key(ui, popup->key)
-    ui_border_abs(ui, v4ff(0), 0, 0)
+  B32 pressed_out = ui_floating_popup_push(ui, key, top_left);
   {
     UI_Key lister_key = ui_keyf("popup_lister_%llu", ui_hash_from_key(key));
-    
-    // NOTE(erb): Hack to achieve the desired event bubling. Because the lister collects the events (selections)
-    // on each cell, we collect the events for the popup before, so that at the end of the first interaction frame, 
-    // the correct 'active' node is a cell item and NOT the popup.
-    // 
-    // How it would work if we collected after: 
-    //  ``
-    //  result.lister = ui_cell_lister(ui, S8Z(), ui_keyf("tab_panel_popup"), cell_arr, ViewKind_COUNT);
-    //  result.pressed_out = (result.lister.selected == 0) && ui_comm_from_node(ui, popup).pressed_out;
-    //  ``
-    //  1. click on cell in the UI
-    //  2. ui_comm(cell) -> cell becomes hot -> cell becomes active
-    //  3. ui_comm(popup) -> popup becomes hot -> popup becomes active
-    //  4. release on cell in the UI
-    //  5. ui_comm(cell) -> cell becomes hot -> not active so nothing happens -> result.lister.selected will always be 0
-    //  6. ui_comm(popup) -> popup becomes hot -> popup is active from last frame -> produces pressed_out
-    //
-    // If we call ui_comm(popup) before then it works out as intented. 
-    
-    B32 pressed_out = ui_comm_from_node(ui, popup).pressed_out;
-    result.lister = ui_cell_lister(ui, S8Z(), lister_key, cell_arr, ViewKind_COUNT);
-    result.pressed_out = (pressed_out && result.lister.selected == 0);
+    result.lister = ui_cell_lister_filtered(ui, label, lister_key, cell_arr, cell_count);
+    result.canceled = (pressed_out && result.lister.selected == 0);
   }
+  ui_floating_popup_pop(ui);
+  return(result);
+}
+
+
+UI_Lister_Popup_Result
+ui_cell_lister_list_floating_popup(UI_Ctx *ui, V2f top_left, UI_Key key, UI_Cell *cell_arr, U32 cell_count, String8 filter_str)
+{
+  UI_Lister_Popup_Result result = {0};
+  B32 pressed_out = ui_floating_popup_push(ui, key, top_left);
+  {
+    UI_Key lister_key = ui_keyf("popup_lister_%llu", ui_hash_from_key(key));
+    result.lister = ui_cell_lister_list(ui, lister_key, cell_arr, cell_count, filter_str);
+    result.canceled = (pressed_out && result.lister.selected == 0);
+  }
+  ui_floating_popup_pop(ui);
   return(result);
 }

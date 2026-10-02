@@ -40,6 +40,7 @@ typedef enum Expr_Kind
   ExprKind_Binary,
   ExprKind_Primary,
   ExprKind_Function,
+  ExprKind_COUNT,
 } Expr_Kind;
 
 typedef struct Expr Expr;

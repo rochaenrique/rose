@@ -123,6 +123,7 @@ token_list_from_str(Arena *arena, String8 str, String8 *error)
     }
     
     SLLQueueAppend(result.first, result.last, token);
+    result.count += 1;
     it = str8_postfix(it, skip_to_idx);
   }
   return(result);

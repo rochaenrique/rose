@@ -48,7 +48,24 @@ struct Expr_State
   UI_Line_Input_State input_state;
   B32 is_editing;
   B32 is_expanded;
+  
+  Expr *cached_expr;
+  String8 error;
+  U64 cached_expr_hash;
+  Arena expr_alloc_arena;
+  
   Expr_State *next;
+};
+
+typedef struct Expr_Editor_State Expr_Editor_State;
+struct Expr_Editor_State
+{
+  UI_Key creating_ui_key;
+  B32 is_editing;
+  I32 cursor;
+  Expr *expr;
+  Arena arena;
+  U8 buffer[sizeof(Expr)*32];
 };
 
 typedef struct View View;
@@ -87,18 +104,20 @@ struct View
     };
     struct
     {
+      // NOTE(erb): expr states
       Expr_State *first_free_expr_state;
       Expr_State *first_expr_state;
       Expr_State *last_expr_state;
       U32 expr_state_count;
       U32 expr_writer_buffer_size;
+      U32 expr_node_arena_size;
+      Arena expr_state_arena;
+      U8 expr_state_buffer[KB(8)];
       
-      UI_Line_Input_State test_line_input;
-      
+      // NOTE(erb): expr selection
       I32 selection_cursor;
       
-      Arena expr_state_arena;
-      U8 expr_state_buffer[512];
+      Expr_Editor_State expr_editor_state;
     };
   };
 };
