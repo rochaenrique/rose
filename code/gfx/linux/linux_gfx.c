@@ -186,15 +186,15 @@ gfx_key_from_x11_keysym(KeySym key_sym)
     // NOTE(erb): these values are greater than 256
 #define KM(idx, value) key_table[(idx) % ArraySize(key_table)] = (value);
     
-    for(U32Each(idx, 12))
+    for(EachU32(idx, 12))
     {
       KM(XK_F1+idx, idx+GFXKey_F1);
     }
-    for(U32Each(idx, 9))
+    for(EachU32(idx, 9))
     {
       KM(XK_0+idx, idx+GFXKey_0);
     }
-    for(U32Each(idx, 'z'-'a'))
+    for(EachU32(idx, 'z'-'a'))
     {
       KM(XK_a+idx, idx+GFXKey_A);
       KM(XK_A+idx, idx+GFXKey_A);
@@ -378,7 +378,7 @@ gfx_screen_get_cursor_position(void)
   V2f result = {0};
   
   U32 screen_count = XScreenCount(lnx_gfx_state.display);
-  for (U32Each(idx, screen_count))
+  for (EachU32(idx, screen_count))
   {
     Window window = XRootWindow(lnx_gfx_state.display, idx);
     

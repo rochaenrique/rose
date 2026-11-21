@@ -162,6 +162,20 @@ copy_sign_f32(F32 value, F32 sign)
   return(result);
 }
 
+B32
+is_power2_u32(U32 n)
+{
+  B32 result = ((n & (n-1)) == 0);
+  return(result);
+}
+
+B32
+is_power2_i32(I32 n)
+{
+  B32 result = (n > 0) && is_power2_u32((U32)n);
+  return(result);
+}
+
 /////////////////////////////////////////////////////
 // NOTE(erb): v2f
 
@@ -493,6 +507,13 @@ rng_u32(U32 min, U32 max)
   Range_U32 result = {0};
   result.min = min;
   result.max = max;
+  return(result);
+}
+
+Range_U32
+rng_u32_point_add(U32 min, U32 size)
+{
+  Range_U32 result = rng_u32(min, min+size);
   return(result);
 }
 

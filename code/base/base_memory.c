@@ -25,7 +25,7 @@ B32
 mem_equals(U8 *a, U8 *b, U64 count)
 {
   B32 result = true;
-  for(U64Each(idx, count))
+  for(EachU64(idx, count))
   {
     if(a[idx] != b[idx])
     {
@@ -36,12 +36,20 @@ mem_equals(U8 *a, U8 *b, U64 count)
   return(result);
 }
 
+Buffer
+buffer_make(void *memory, U64 size)
+{
+  Buffer result = {0};
+  result.base = memory;
+  result.size = size;
+  return(result);
+}
+
 Arena
 arena_make(void *memory, U64 size)
 {
   Arena arena = {0};
-	arena.size = size;
-	arena.base = memory;
+  arena.buffer = buffer_make(memory, size);
 	arena.used = 0;
   mem_set(memory, size, 0xDD);
   return(arena);
@@ -50,8 +58,8 @@ arena_make(void *memory, U64 size)
 void 
 arena_init(Arena *arena, void *memory, U64 size)
 {
-	arena->size = size;
-	arena->base = memory;
+	arena->buffer.size = size;
+	arena->buffer.base = memory;
 	arena->used = 0;
   mem_set(memory, size, 0xDD);
 }
@@ -65,19 +73,34 @@ arena_release(Arena *arena)
 void *
 arena_push_size(Arena *arena, U64 size) 
 {
-  Assert(arena->used + size <= arena->size);
-  void *result = (U8 *)arena->base + arena->used;
+  Assert(arena->used + size <= arena->buffer.size);
+  void *result = (void *)((U8 *)arena->buffer.base + arena->used);
   mem_zero(result, size);
   arena->used += size;
-  return((void *)result);
+  return(result);
+}
+
+Buffer
+push_buffer(Arena *arena, U64 size)
+{
+  void *memory = arena_push_size(arena, size);
+  Buffer result = buffer_make(memory, size);
+  return(result);
+}
+
+void
+arena_pop_size(Arena *arena, U64 size)
+{
+  Assert(arena->used + size <= arena->buffer.size);
+  Assert(size <= arena->used);
+  arena->used -= size;
 }
 
 Arena 
 push_sub_arena(Arena *parent, U64 size)
 {
-  Arena result = {0};
   void *memory = arena_push_size(parent, size);
-  arena_init(&result, memory, size);
+  Arena result = arena_make(memory, size);
   return(result);
 }
 
@@ -101,4 +124,13 @@ void
 scratch_end(Scratch *scratch)
 {
   arena_scratch_reset(scratch);
+}
+
+Buffer
+scratch_get_used_buffer(Scratch *scratch)
+{
+  Buffer result = {0};
+  result.base = ((U8 *)scratch->arena->buffer.base + scratch->position);
+  result.size = (scratch->arena->used - scratch->position);
+  return(result);
 }

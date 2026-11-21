@@ -1,5 +1,7 @@
 # build
 /build
+code/build/
+code/builder/
 *.exe
 *.exp
 *.obj
@@ -11,6 +13,9 @@
 raylib*macos/
 glfw*.bin.MACOS/
 freetype*/
+
+# test data
+*.rose
 
 # misc
 code/build/.vs/

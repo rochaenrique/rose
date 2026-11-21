@@ -36,6 +36,18 @@ push_str8_from_cstr(Arena *arena, char *cstr)
 // NOTE(erb): char helpers / predicates
 // //////////////////////////////////////////////
 
+U32
+digit_count_u64(U64 value, U8 radix)
+{
+  U32 count = 0;
+  for(;value>0;++count)
+  {
+    value /= radix;
+  }
+  U32 result = Cap1(count);
+  return(result);
+}
+
 B32
 is_ascii(I32 x)
 {
@@ -161,7 +173,7 @@ str8_hash(String8 str)
   I32 m = (I32)(1e9 + 9);
 	U64 ppow = 1;
 	
-	for (U64Each(char_idx, str.size))
+	for (EachU64(char_idx, str.size))
 	{
 		U8 c = str.value[char_idx];
 		hash = (hash + (c - 'a' + 1) * ppow) % m;
@@ -175,7 +187,7 @@ str8_index_diff(String8 str_a, String8 str_b)
 {
   Index_U64 result = {0};
 	U64 size = Min(str_a.size, str_b.size);
-  for (U64Each(idx, size))
+  for (EachU64(idx, size))
   {
     if (str_a.value[idx] != str_b.value[idx])
     {
@@ -207,7 +219,7 @@ str8_equals_case_insens(String8 str_a, String8 str_b)
 	if (str_a.size == str_b.size)
 	{
 		result = true;
-		for (U32Each(idx, str_a.size))
+		for (EachU32(idx, str_a.size))
 		{
       U8 a = char_to_upper(str_a.value[idx]);
       U8 b = char_to_upper(str_b.value[idx]);
@@ -287,7 +299,7 @@ Index_U64
 str8_index_predicate(String8 str, Char_Predicate_Func predicate, Index_Flags flags)
 {
 	Index_U64 result = {0};
-  for (U64Each(it, str.size))
+  for (EachU64(it, str.size))
   {
     U64 idx = (flags & IndexFlags_Backward)?(str.size-it-1):(it);
     if (predicate(str.value[idx]))
@@ -305,7 +317,7 @@ Index_U64
 str8_index(String8 str, char c, Index_Flags flags)
 {
 	Index_U64 result = {0};
-  for (U64Each(it, str.size))
+  for (EachU64(it, str.size))
 	{
     U64 idx = (flags & IndexFlags_Backward)?(str.size-it-1):(it);
 		if ((flags & IndexFlags_CharCaseInsens)
@@ -556,12 +568,11 @@ U8 *
 str8_writer_advance_bytes(String8_Writer *writer, U64 count)
 {
   U8 *bytes = 0;
-  if(writer->str.size + count <= writer->capacity)
+  if(AssertOrBool(writer->str.size + count <= writer->capacity))
   {
     bytes = writer->str.value + writer->str.size;
     writer->str.size += count;
   }
-  else InvalidCodePath;
   return(bytes);
 }
 
@@ -589,7 +600,7 @@ void
 write_u64(U8 *buffer, U32 digit_count, U64 value, U8 radix, B32 is_upper_case)
 {
   char ch_offset = (is_upper_case ? 'A' : 'a');
-  for(U32Each(idx, digit_count))
+  for(EachU32(idx, digit_count))
   {
     U64 write_idx = digit_count-idx-1;
     U8 digit = (value % radix);
@@ -611,13 +622,19 @@ str8_writer_u64(String8_Writer *writer, U64 value,
   }
 }
 
+void
+str8_writer_decimal(String8_Writer *writer, U64 value)
+{
+  str8_writer_u64(writer, value, 10, digit_count_u64(value, 10), false);
+}
+
 void 
 str8_writer_replace(String8_Writer *writer, String8 replace_str, Range_U64 range)
 {
   if(rng_u64_inclusive_range(range, rng_u64(0, writer->str.size))) 
   {
     I32 diff = (I32)replace_str.size - (I32)rng_u64_size(range);
-    if(writer->str.size + diff < writer->capacity)
+    if(AssertOrBool(writer->str.size + diff < writer->capacity))
     {
       Scratch scratch = scratch_begin(0, 0);
       String8 replace_copy = push_str8_copy(scratch.arena, replace_str);
@@ -629,7 +646,6 @@ str8_writer_replace(String8_Writer *writer, String8 replace_str, Range_U64 range
       
       scratch_end(&scratch);
     }
-    else InvalidCodePath;
   }
 }
 
@@ -673,6 +689,19 @@ str8_builder_make_default()
 {
   String8_Builder result = str8_builder_make(STR8_BUILDER_DEFAULT_PAYLOAD_SIZE);
   return(result);
+}
+
+void
+str8_builder_free_all(String8_Builder *builder)
+{
+  if(builder->first != 0)
+  {
+    SLLStackPush(builder->first_free, builder->first);
+  }
+  builder->first = 0;
+  builder->last = 0;
+  builder->total_size = 0;
+  builder->count = 0;
 }
 
 U8 *
@@ -772,7 +801,7 @@ str8_builder_u64(Arena *arena, String8_Builder *builder, U64 value,
   {
     Assert(divisor > 0);
     String8 bytes = str8_builder_get_next_bytes(arena, builder, digit_count);
-    for(U32Each(idx, bytes.size))
+    for(EachU32(idx, bytes.size))
     {
       U8 digit = (U8)(value / divisor);
       U8 ch = (digit >= 10) ? (digit - 10 + ch_offset) : (digit + '0');
@@ -807,7 +836,7 @@ String8
 str8_replace_char(String8 str, char origin, char replacement)
 {
   String8 result = str;
-  for (U64Each(char_idx, str.size))
+  for (EachU64(char_idx, str.size))
   {
     U8 *c = (str.value + char_idx);
     if (*c == origin)
@@ -871,19 +900,19 @@ str8_join_total_size(String8_Join *join, U32 count)
 }
 
 String8
-str8_list_join(Arena *arena, String8_List *list, String8_Join join)
+str8_list_join(Arena *arena, String8_List *list, String8_Join *join)
 {
-  U64 size = (list->str_value_count + str8_join_total_size(&join, list->count));
+  U64 size = (list->str_value_count + str8_join_total_size(join, list->count));
   
   String8_Writer sw = push_str8_writer(arena, size);
   for(EachNode(String8_Node, node, list->first))
   {
-    str8_writer_str(&sw, join.prefix);
+    str8_writer_str(&sw, join->prefix);
     str8_writer_str(&sw, node->str);
-    str8_writer_str(&sw, join.postfix);
+    str8_writer_str(&sw, join->postfix);
     if(node->next != 0)
     {
-      str8_writer_str(&sw, join.sep);
+      str8_writer_str(&sw, join->sep);
     }
   }
   String8 result = sw.str;
@@ -939,7 +968,7 @@ str8_array_from_cstr_array(Arena *arena, char **items, U32 count)
   String8_Array result = {0};
   result.items = PushArray(arena, count, String8);
   result.count = count;
-  for (U64Each(idx, count))
+  for (EachU64(idx, count))
   {
     result.items[idx] = S8CStr(items[idx]);
   }
@@ -950,7 +979,7 @@ B32
 str8_array_contains(String8_Array array, String8 needle)
 {
   B32 result = false;
-  for(U32Each(idx, array.count))
+  for(EachU32(idx, array.count))
   {
     String8 test = array.items[idx];
     if (str8_equals(test, needle))
@@ -975,7 +1004,7 @@ str8_match(String8 haystack, String8 needles, Match_Flags flags)
   if(flags & MatchFlags_AnyChar)
   {
     Index_Flags index_flags = (flags & MatchFlags_CaseInsens) ? IndexFlags_CharCaseInsens : 0;
-    for(U32Each(idx, haystack.size))
+    for(EachU32(idx, haystack.size))
     {
       if(str8_index(needles, haystack.value[idx], index_flags).exists)
       {
@@ -997,7 +1026,7 @@ Index_U64
 str8_find(String8 haystack, String8 needle, Match_Flags flags)
 {
   Index_U64 result = {0};
-  for (U32Each(idx, haystack.size))
+  for (EachU32(idx, haystack.size))
   {
     String8 slice = str8_slice(haystack, rng_u64(idx, idx + needle.size));
     if (str8_match(slice, needle, flags))
@@ -1028,7 +1057,7 @@ U64
 str8_array_total_length(String8_Array *array)
 {
   U64 result = 0;
-  for (U64Each(str_idx, array->count))
+  for (EachU64(str_idx, array->count))
   {
     result += array->items[str_idx].size;
   }
@@ -1039,7 +1068,7 @@ B32
 str8_contains_str_array_node(String8 haystack, String8_Array *needles)
 {
   B32 result = false;
-  for (U64Each(idx, needles->count))
+  for (EachU64(idx, needles->count))
   {
     if(str8_find(haystack, needles->items[idx], MatchFlags_CaseInsens).exists)
     {
@@ -1051,22 +1080,22 @@ str8_contains_str_array_node(String8 haystack, String8_Array *needles)
 }
 
 String8
-str8_array_join(Arena *arena, String8_Array *array, String8_Join join)
+str8_array_join(Arena *arena, String8_Array *array, String8_Join *join)
 {
   // NOTE(erb): calculate size
   U64 total_size = (str8_array_total_length(array) + 
-                    str8_join_total_size(&join, array->count));
+                    str8_join_total_size(join, array->count));
   
   // NOTE(erb): perform copy
   String8_Writer sw = push_str8_writer(arena, total_size);
-  for(U64Each(str_idx, array->count))
+  for(EachU64(str_idx, array->count))
   {
-    str8_writer_str(&sw, join.prefix);
+    str8_writer_str(&sw, join->prefix);
     str8_writer_str(&sw, array->items[str_idx]);
-    str8_writer_str(&sw, join.postfix);
+    str8_writer_str(&sw, join->postfix);
     if(str_idx < array->count-1)
     {
-      str8_writer_str(&sw, join.sep);
+      str8_writer_str(&sw, join->sep);
     }
   }
   String8 result = sw.str;
@@ -1388,18 +1417,6 @@ printf_parse_format(char **cursor)
 
 #define printf_resolve_number(num, args) (I32)((num).is_dynamic ? va_arg((args), int) : (num).value)
 #define printf_resolve_number_or_default(num, args, value) (I32)((num).is_specified ? printf_resolve_number((num), (args)) : (value))
-
-U32
-digit_count_u64(U64 value, U8 radix)
-{
-  U32 count = 0;
-  for(;value>0;++count)
-  {
-    value /= radix;
-  }
-  U32 result = Cap1(count);
-  return(result);
-}
 
 typedef struct Printf_Metrics Printf_Metrics;
 struct Printf_Metrics
@@ -1845,7 +1862,7 @@ write_formatted_varg(char *buffer, U64 buffer_size, char *format, va_list args)
             U64 value = (U64)va_arg(args, void *);
             
             U32 skip_count = 0;
-            for(U32Each(idx, sizeof(U64)))
+            for(EachU32(idx, sizeof(U64)))
             {
               U32 rev_idx = (sizeof(U64) - idx - 1);
               U64 byte = (value >> (rev_idx*8));
@@ -2011,7 +2028,7 @@ check_utf8_continuation_bytes(String8 buffer, U32 bytes_to_check)
   if(bytes_to_check+1 <= buffer.size)
   {
     result = true;
-    for(U64Each(idx, bytes_to_check))
+    for(EachU64(idx, bytes_to_check))
     {
       U8 byte = buffer.value[idx+1];
       if((byte & 0xC0) != 0x80)
@@ -2216,15 +2233,15 @@ str8_lev_distance(String8 a, String8 b)
   I32 *row0 = PushArray(scratch.arena, b.size+1, I32);
   I32 *row1 = PushArray(scratch.arena, b.size+1, I32);
   
-  for(U32Each(idx, b.size+1))
+  for(EachU32(idx, b.size+1))
   {
     row0[idx] = idx;
   }
   
-  for(U32Each(i, a.size))
+  for(EachU32(i, a.size))
   {
     row1[0] = (i + 1);
-    for(U32Each(j, b.size))
+    for(EachU32(j, b.size))
     {
       I32 delete_cost = (row0[j+1] + 1);
       I32 insert_cost = (row1[j] + 1);
@@ -2342,7 +2359,7 @@ str8_scan_word_delta(String8 str, U64 start, I64 word_delta)
   Scan_Direction direction = (word_delta >= 0)?ScanDirection_Forward:ScanDirection_Backward;
   Index_U64 it = {};
   it.value = start;
-  for(U32Each(idx, Abs(word_delta)))
+  for(EachU32(idx, Abs(word_delta)))
   {
     Index_U64 scan = str8_scan_word(str, it.value, direction);
     if(!scan.exists)
@@ -2361,7 +2378,7 @@ utf8_scan_delta(String8 str, U64 start, I64 delta)
   UTF8_Decode_Iterator it = {};
   it.base_str = str;
   it.cursor = start;
-  for(U32Each(i, Abs(delta)))
+  for(EachU32(i, Abs(delta)))
   {
     B32 did_something = ((delta > 0) ? utf8_it_next(&it) : utf8_it_prev(&it));
     if (!did_something)

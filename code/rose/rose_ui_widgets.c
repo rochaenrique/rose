@@ -127,7 +127,7 @@ ui_color_picker_popup(UI_Ctx *ui, V2f start_position, B32 *is_open, V4f *color)
     Range_V2f root = ui_node_rng_v2f(ui->root);
     Range_V2f range = ui_node_rng_v2f(window_comm.node);
     
-    for(U32Each(axis, 1))
+    for(EachU32(axis, 1))
     {
       Range_F32 root_axis = rng_v2f_axis(root, axis);
       Range_F32 range_axis = rng_v2f_axis(range, axis);
@@ -353,9 +353,9 @@ ui_date_time_range_picker(UI_Ctx *ui, Date_Input_State *state, Date_Time *start,
         I32 start_days = cal_date_to_days(start->date);
         I32 end_days   = cal_date_to_days(end->date);
         I32 calendar_starting_day = (start_days - weekday_difference(weekday_from_days(start_days), monday_weekday));
-        for(U32Each(y, (U32)grid_size.y))
+        for(EachU32(y, (U32)grid_size.y))
         {
-          for(U32Each(x, (U32)grid_size.x))
+          for(EachU32(x, (U32)grid_size.x))
           {
             I32 cell_day = (calendar_starting_day + y*grid_size.x + x);
             Calendar_Date cell_date = cal_date_from_days(cell_day);
@@ -479,7 +479,7 @@ ui_date_time_range_picker(UI_Ctx *ui, Date_Input_State *state, Date_Time *start,
           V2f cursor = rect.min;
           V2f tick_size = v2f(rect_size.x, rect_size.y/tick_count);
           ui_font_size(ui, 15.0f)
-            for(U32Each(y, tick_count))
+            for(EachU32(y, tick_count))
           {
             U32 tick_hours = (time_start.hour + y);
             
@@ -797,7 +797,7 @@ ui_cell(UI_Ctx *ui, UI_Cell *cell, UI_Key key)
       
       ui_background_color(ui, with_alpha(v4ff(0.7f), 1))
         ui_border_abs(ui, v4f(0.5f, 0.5f, 0.7f, 1), 1.0f, 2)
-        for(U32Each(combo_idx, cell->key_map->count))
+        for(EachU32(combo_idx, cell->key_map->count))
       {
         Scratch combo_scratch = arena_get_scratch(scratch.arena);
         Key_Combo *combo = (cell->key_map->combos + combo_idx);
@@ -923,7 +923,7 @@ ui_cell_lister_items(UI_Ctx *ui, UI_Cell *cell_arr, U32 cell_count, String8 filt
 #endif
       
       B32 is_first = true;
-      for(U64EachInRange(idx, index_range))
+      for(EachInRangeU64(idx, index_range))
       {
         // NOTE(erb): actual items
         UI_Cell *cell = (cell_arr + idx);

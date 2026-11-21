@@ -32,7 +32,7 @@ fnt_bake_font(Arena *arena, String8 font_file, F32 pixel_height,
   // NOTE(erb): calculate codepoints in font
   for(EachNode(FNT_Codepoint_Range, range, codepoint_ranges))
   {
-    for(U32EachInRange(codepoint, range->value))
+    for(EachInRangeU32(codepoint, range->value))
     {
       I32 glyph_idx = stbtt_FindGlyphIndex(&font_info, codepoint);
       if(glyph_idx != 0)
@@ -49,7 +49,7 @@ fnt_bake_font(Arena *arena, String8 font_file, F32 pixel_height,
   Atlas_Cursor cursor = atlas_cursor_make(atlas_size);
   for(EachNode(FNT_Codepoint_Range, range, codepoint_ranges))
   {
-    for(U32EachInRange(codepoint, range->value))
+    for(EachInRangeU32(codepoint, range->value))
     {
       I32 glyph_idx = stbtt_FindGlyphIndex(&font_info, codepoint);
       if(glyph_idx != 0)

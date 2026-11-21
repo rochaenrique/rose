@@ -241,7 +241,7 @@ gfx_vulkan_init()
       if (error.value == 0)
       {
         queue_family_idx = queue_family_count;
-        for (U32Each(queue_family, queue_family_count))
+        for (EachU32(queue_family, queue_family_count))
         {
           VkQueueFamilyProperties *queue = queue_families + queue_family_idx;
           if (queue->queueFlags & VK_QUEUE_GRAPHICS_BIT)
@@ -500,7 +500,7 @@ gfx_vulkan_equip(GFX_Window handle)
       
       //- test all modes
       
-      for (U32Each(mode_idx, present_mode_count))
+      for (EachU32(mode_idx, present_mode_count))
       {
         VkPresentModeKHR mode = mode_arr[mode_idx];
         for (EachElement(Present_Mode_Choice, choice, mode_choices))
@@ -596,7 +596,7 @@ gfx_vulkan_equip(GFX_Window handle)
     if (error.value == 0)
     {
       image_views = PushArray(buffers_scratch.arena, image_count, VkImageView);
-      for (U32Each(image_idx, image_count))
+      for (EachU32(image_idx, image_count))
       {
         VkComponentMapping view_components = {0};
         view_components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -786,7 +786,7 @@ gfx_vulkan_equip(GFX_Window handle)
   if (error.value == 0)
   {
     frame_buffers = PushArray(buffers_scratch.arena, image_count, VkFramebuffer);
-    for (U32Each(image_idx, image_count))
+    for (EachU32(image_idx, image_count))
     {
       VkImageView *image_view = (image_views + image_idx);
       
@@ -1077,7 +1077,7 @@ gfx_vulkan_destroy(GFX_Window handle)
     vkDestroyFence(w32_vulkan_state.device, vk->in_flight_fence, 0);
     vkDestroyCommandPool(w32_vulkan_state.device, vk->command_pool, 0);
     
-    for (U32Each(image_idx, vk->image_count)) 
+    for (EachU32(image_idx, vk->image_count)) 
     {
       VkFramebuffer buffer = vk->frame_buffers[image_idx];
       vkDestroyFramebuffer(w32_vulkan_state.device, buffer, 0);
@@ -1086,7 +1086,7 @@ gfx_vulkan_destroy(GFX_Window handle)
     vkDestroyPipeline(w32_vulkan_state.device, vk->graphics_pipeline, 0);
     vkDestroyRenderPass(w32_vulkan_state.device, vk->render_pass, 0);
     
-    for (U32Each(image_idx, vk->image_count)) 
+    for (EachU32(image_idx, vk->image_count)) 
     {
       VkImageView view = vk->image_views[image_idx];
       vkDestroyImageView(w32_vulkan_state.device, view, 0);

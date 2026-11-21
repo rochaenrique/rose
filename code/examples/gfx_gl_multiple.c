@@ -45,7 +45,7 @@ OS_ENTRY_POINT()
   
   //- equiping
   // TODO(erb): check if the window is allready equiped!
-  for (U32Each(idx, window_count))
+  for (EachU32(idx, window_count))
   {
     B32 equipped = gfx_gl_equip(windows[idx]);
     if (!equipped)
@@ -55,7 +55,7 @@ OS_ENTRY_POINT()
   }
   
   //- showing
-  for (U32Each(idx, window_count))
+  for (EachU32(idx, window_count))
   {
     gfx_window_show(windows[idx]);
   }
@@ -73,7 +73,7 @@ OS_ENTRY_POINT()
         // NOTE(erb): array removal
         int x = 0;
         SupressUnused(x);
-        for(U32Each(idx, window_count))
+        for(EachU32(idx, window_count))
         {
           if(windows[idx] == event->window)
           {
@@ -92,7 +92,7 @@ OS_ENTRY_POINT()
       break;
     }
     
-    for (U32Each(idx, window_count))
+    for (EachU32(idx, window_count))
     {
       GFX_Window window = windows[idx];
       F32 t = sinf(tick/(100 * (idx + 1)));
@@ -109,7 +109,7 @@ OS_ENTRY_POINT()
   }
   
   //- release
-  for (U32Each(idx, window_count))
+  for (EachU32(idx, window_count))
   {
     gfx_window_destroy(windows[idx]);
   }

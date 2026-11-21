@@ -190,12 +190,12 @@ draw_input_table(Q2D_State *render_state, Q2D_Font *font, B32 *table, Range_V2f 
   
   V2f padding = v2f_scale(size, 0.01f);
   
-  for(U32Each(row, ArraySize(keyboard_layout)))
+  for(EachU32(row, ArraySize(keyboard_layout)))
   {
     GFX_Key *row_keys = (GFX_Key *)(keyboard_layout + row);
     
     U32 count = 0;
-    for(U32Each(col, ArraySize(keyboard_layout[row])))
+    for(EachU32(col, ArraySize(keyboard_layout[row])))
     {
       if(row_keys[col] != GFXKey_None)
       {
@@ -204,7 +204,7 @@ draw_input_table(Q2D_State *render_state, Q2D_Font *font, B32 *table, Range_V2f 
     }
     V2f cell_size = v2f(size.x/count, row_height);
     
-    for(U32Each(col, count))
+    for(EachU32(col, count))
     {
       GFX_Key key = row_keys[col];
       if(key != GFXKey_None)
@@ -216,7 +216,7 @@ draw_input_table(Q2D_State *render_state, Q2D_Font *font, B32 *table, Range_V2f 
         V2f split_size = v2f(cell_size.x, cell_size.y/split_count);
         
         F32 y = key_pos.y+padding.y;
-        for(U32Each(split_idx, split_count))
+        for(EachU32(split_idx, split_count))
         {
           GFX_Key split_key = key_split[split_idx];
           V4f color = table[split_key]?color_red:color_black;
@@ -263,7 +263,7 @@ animate_scroll(Q2D_State *render_state, F32 dt, Range_V2f rect, B32 up, V4f off_
   F32 height = size.y/(count-1);
   V2f point = v2f(rect.min.x + (rect_size.x - size.x)*0.5f, 
                   rect.min.y - count*height + disp_y);
-  for(U32Each(idx, count*2))
+  for(EachU32(idx, count*2))
   {
     V4f color = (idx%2)==0?on_color:off_color;
     Range_V2f edge_range = rng_v2f_point_add(point, v2ff(size.x));
@@ -305,7 +305,7 @@ draw_input_mouse(Q2D_State *render_state, B32 *table, V2f scroll, Range_V2f mous
   // NOTE(erb): buttons
   GFX_Mouse_Code buttons[] = {GFXMouseCode_Left, GFXMouseCode_Right};
   V2f button_size = v2f_sub(v2f(top_size.x/ArraySize(buttons), top_size.y), v2ff(half_padding));
-  for(U32Each(idx, ArraySize(buttons)))
+  for(EachU32(idx, ArraySize(buttons)))
   {
     V4f color = table[buttons[idx]]?on_color:off_color;
     V2f pos = mouse_rect.min;
@@ -385,7 +385,7 @@ OS_ENTRY_POINT()
   // NOTE(erb): create windows
   Wdw windows[2];
   U32 window_count = ArraySize(windows);
-  for (U32Each(idx, window_count))
+  for (EachU32(idx, window_count))
   {
     windows[idx] = create_window(arena);
   }
@@ -418,7 +418,7 @@ OS_ENTRY_POINT()
     GFX_Event_List all_events = gfx_poll_events(frame_scratch.arena);
     
     //- update window
-    for (U32Each(idx, window_count))
+    for (EachU32(idx, window_count))
     {
       Scratch wdw_scratch = arena_get_scratch(frame_scratch.arena);
       

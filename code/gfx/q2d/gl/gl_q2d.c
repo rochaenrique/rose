@@ -251,14 +251,14 @@ q2d_render(Q2D_State *renderer)
                  (F32)gl_renderer.viewport_size.x, (F32)gl_renderer.viewport_size.y));
   
   // NOTE(erb): batches
-  for (U32Each(batch_idx, renderer->batch_count))
+  for (EachU32(batch_idx, renderer->batch_count))
   {
     Q2D_Batch *batch = (renderer->batches + batch_idx);
     
     if(batch->rect_count > 0)
     {
       // NOTE(erb): texture slots
-      for (U32Each(texture_idx, batch->texture_count))
+      for (EachU32(texture_idx, batch->texture_count))
       {
         GL(glActiveTexture(GL_TEXTURE0 + texture_idx));
         
@@ -302,7 +302,7 @@ q2d_render(Q2D_State *renderer)
         GL(glBindBuffer(GL_ARRAY_BUFFER, 0));
       }
       
-      for (U32Each(idx, batch->texture_count))
+      for (EachU32(idx, batch->texture_count))
       {
         GL(glActiveTexture(GL_TEXTURE0 + idx));
         GL(glBindTexture(GL_TEXTURE_2D, 0));

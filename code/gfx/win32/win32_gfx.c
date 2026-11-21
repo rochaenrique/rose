@@ -56,15 +56,15 @@ gfx_key_from_w32_vkey(WPARAM w_param)
   {
     first = false;
     
-    for(U32Each(idx, 'Z'-'A'))
+    for(EachU32(idx, 'Z'-'A'))
     {
       key_table['A'+idx] = idx+GFXKey_A;
     }
-    for(U32Each(idx, '9'-'0'))
+    for(EachU32(idx, '9'-'0'))
     {
       key_table['0'+idx] = idx+GFXKey_0;
     }
-    for(U32Each(idx, VK_F12-VK_F1))
+    for(EachU32(idx, VK_F12-VK_F1))
     {
       key_table[VK_F1+idx] = idx+GFXKey_F1;
     }

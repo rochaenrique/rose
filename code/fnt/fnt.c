@@ -20,7 +20,7 @@ fnt_get_glyph(FNT_Baked_Font *font, I32 codepoint)
 {
   // TODO(erb): binary search here
   FNT_Glyph *glyph = 0;
-  for(U32Each(glyph_idx, font->glyph_count))
+  for(EachU32(glyph_idx, font->glyph_count))
   {
     FNT_Glyph *test = (font->glyphs + glyph_idx);
     if(test->codepoint == codepoint)

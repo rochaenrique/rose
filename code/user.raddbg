@@ -1,4 +1,4 @@
-// raddbg 0.9.28 user file
+// raddbg 0.9.29 user file
 
 recent_project:
 {
@@ -8,6 +8,16 @@ recent_project:
 recent_project:
 {
   path: "../project.raddbg"
+  name: ""
+}
+recent_project:
+{
+  path: "../../typewar/code/project.raddbg"
+  name: ""
+}
+recent_project:
+{
+  path: "../../../upm/tutoria/so/s1/project.raddbg"
   name: ""
 }
 recent_project:
@@ -45,7 +55,7 @@ window:
   split_x
   panels:
   {
-    0.525401:
+    0.462080:
     {
       text:
       {
@@ -108,7 +118,7 @@ window:
       text:
       {
         selected
-        expression: "file:\"C:/Users/erb/dev/rose/code/ui/ui_basic_widgets.c\".data"
+        expression: "file:\"C:/Users/erb/dev/rose/code/examples/win32_broadcast.c\".data"
         auto: 1
         project: "C:/Users/erb/dev/rose/code/project.raddbg"
         query:
@@ -120,56 +130,98 @@ window:
         cursor_column: 1
         mark_line: 1
         mark_column: 1
-        cursor: 0x2c93
-        mark: 0x2c93
+        cursor: 0x2f9f
+        mark: 0x2f9f
       }
       text:
       {
         expression: "query:output"
         query: input: ""
-        cursor: 0x5ef
-        mark: 0x5ef
+        cursor: 0x59
+        mark: 0x59
       }
       text:
       {
         expression: "file:\"C:/Users/erb/dev/rose/code/win32_ui_app.c\".data"
         project: "C:/Users/erb/dev/rose/code/project.raddbg"
-        query: input: ""
-        cursor: 0x1d5a8
-        mark: 0x1d5a8
+        query:
+        {
+          input: ""
+          cmd: search
+        }
+        cursor: 0x1442b
+        mark: 0x1442b
       }
+      text:
+      {
+        expression: "file:\"C:/Users/erb/upm/tutoria/so/s1/c/ptr_decay.c\".data"
+        project: "C:/Users/erb/upm/tutoria/so/s1/project.raddbg"
+        query: input: ""
+        cursor: 0xa07
+        mark: 0xa07
+      }
+      text:
+      {
+        expression: "file:\"C:/Users/erb/dev/rose/code/builder.c\".data"
+        auto: 1
+        project: "C:/Users/erb/dev/typewar/code/project.raddbg"
+        query: input: ""
+        cursor: 0x563a
+        mark: 0x563a
+      }
+      disasm: query: input: ""
     }
-    0.474595:
+    0.537914:
     {
-      0.720742:
+      0.714440: selected watch:
       {
         selected
-        watch:
+        expression: ""
+        normal: 0.199770 0.800231
+        table_2_cols: 0.645265 0.354735
+        table_3_cols: 0.642221 0.152897 0.204882
+        watch_expression:
         {
-          selected
-          expression: ""
-          normal: 0.412028 0.587972
-          table_2_cols: 0.614790 0.385210
+          project: "C:/Users/erb/dev/typewar/code/project.raddbg"
+          expression: result
         }
-        text:
+        watch_expression:
         {
-          expression: ""
-          cursor: 0x0
-          mark: 0x0
-          show_line_numbers: 1
+          project: "C:/Users/erb/dev/rose/code/project.raddbg"
+          expression: dest_address
+        }
+        watch_expression:
+        {
+          project: "C:/Users/erb/dev/rose/code/project.raddbg"
+          expression: text
+        }
+        watch_expression:
+        {
+          project: "C:/Users/erb/dev/rose/code/project.raddbg"
+          expression: text_size
+        }
+        watch_expression:
+        {
+          project: "C:/Users/erb/dev/rose/code/project.raddbg"
+          expression: "room->ip_str"
+        }
+        watch_expression:
+        {
+          project: "C:/Users/erb/dev/rose/code/project.raddbg"
+          expression: sockaddr_in
         }
       }
-      0.279258:
+      0.285557:
       {
         watch:
         {
           selected
           expression: "query:call_stack"
-          call_stack_frame: 0.050000 0.689877 0.260123
+          call_stack_frame: 0.050000 0.803488 0.146512
           query:
           {
-            cmd: search
-            input: pre
+            cmd: search_backwards
+            input: "\n"
           }
         }
         watch: expression: "query:breakpoints"
@@ -177,10 +229,10 @@ window:
       }
     }
   }
-  font_size: 13
+  font_size: 12
   maximized
 }
-current_path: "C:/Users/erb/dev/rose/code"
+current_path: "C:/Users/erb/dev/rose/code/build"
 keybindings:
 {
   { kill_all f5 shift }
@@ -325,11 +377,6 @@ keybindings:
   { move_left left }
   { move_right_chunk_select f shift alt }
 }
-file_path_map:
-{
-  source: "C:/Users/erb/dev/marker/code/marker_win32.c"
-  dest: "C:/Users/erb/dev/marker/code/win32_main.c"
-}
 breakpoint:
 {
   project: "C:\\Users\\erb\\dev\\marengos-core/project.raddbg"
@@ -404,21 +451,49 @@ debug_info:
 }
 breakpoint:
 {
-  project: "C:/Users/erb/dev/rose/code/project.raddbg"
-  address_location: "ui->open_popup_key"
-  break_on_write: 1
-  break_on_read: 0
+  project: "C:/Users/erb/upm/tutoria/so/s1/project.raddbg"
+  source_location: "../../../upm/tutoria/so/s1/c/ptr_decay.c:129:1"
+  hit_count: 1
+}
+breakpoint:
+{
+  project: "C:/Users/erb/upm/tutoria/so/s1/project.raddbg"
+  source_location: "../../../upm/tutoria/so/s1/c/ptr_decay.c:134:31"
+  hit_count: 0
+}
+breakpoint:
+{
+  project: "C:/Users/erb/upm/tutoria/so/s1/project.raddbg"
+  source_location: "../../../upm/tutoria/so/s1/c/ptr_decay.c:142:1"
   hit_count: 0
 }
 debug_info:
 {
-  path: "C:/Users/erb/dev/rose/code/build/win32_ui_main.pdb"
-  timestamp: 66225066936943
-  project: "C:/Users/erb/dev/rose/code/project.raddbg"
+  path: "C:/Users/erb/upm/tutoria/so/s1/c/ptr_decay.pdb"
+  timestamp: 66229482388672
+  project: "C:/Users/erb/upm/tutoria/so/s1/project.raddbg"
+}
+breakpoint:
+{
+  project: "C:/Users/erb/dev/typewar/code/project.raddbg"
+  source_location: "builder.c:836:1"
+  hit_count: 1
 }
 debug_info:
 {
-  path: "C:/Users/erb/dev/rose/code/build/win32_ui_app.pdb"
-  timestamp: 66227177134839
+  path: "C:/Users/erb/dev/typewar/code/builder/builder.pdb"
+  timestamp: 66231570268638
+  project: "C:/Users/erb/dev/typewar/code/project.raddbg"
+}
+breakpoint:
+{
+  project: "C:/Users/erb/dev/rose/code/project.raddbg"
+  source_location: "builder.c:627:1"
+  hit_count: 0
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/rose/code/build/win32_broadcast.pdb"
+  timestamp: 66231603706059
   project: "C:/Users/erb/dev/rose/code/project.raddbg"
 }

@@ -3,12 +3,18 @@
 #ifndef BASE_MEMORY_H
 #define BASE_MEMORY_H
 
+typedef struct Buffer Buffer;
+struct Buffer
+{
+  void *base;
+  U64 size;
+};
+
 typedef struct Arena Arena;
 struct Arena
 {
-	U64 size;
 	U64 used;
-	void *base;
+	Buffer buffer;
 };
 
 typedef struct Scratch Scratch;

@@ -401,7 +401,7 @@ fit_size_node(UI_Node *node, Axis2 axis)
 		*node_min_size += padding;
 		*node_size += padding;
 		
-		if (node->layout_axis == axis)
+		if(node->layout_axis == axis)
 		{
 			*node_size += node_total_child_gap(node);
 		}
@@ -410,19 +410,19 @@ fit_size_node(UI_Node *node, Axis2 axis)
   if(!(node->flags & UIFlags_Floating))
   {
     UI_Node *parent = node->parent;
-    if (parent)
+    if(parent)
     {
       F32 *parent_size = &parent->size.c[axis];
       F32 *parent_min_size = &parent->min_size.c[axis];
       
-      if (parent->sizing[axis] != UISizing_Fixed)
+      if(parent->sizing[axis] != UISizing_Fixed)
       {
-        if (parent->layout_axis == axis)
+        if(parent->layout_axis == axis)
         {
           *parent_size += *node_size;
           *parent_min_size += *node_min_size;
         }
-        else if (!(parent->flags & UIFlags_CrossOverlay))
+        else if(!(parent->flags & UIFlags_CrossOverlay))
         {
           *parent_size = Max(*parent_size, *node_size);
           *parent_min_size = Max(*parent_min_size, *parent_min_size);
@@ -439,7 +439,6 @@ fit_size_step(UI_Node *node, Axis2 axis)
   {
 		fit_size_step(child, axis);
   }
-  
   fit_size_node(node, axis);
 }
 
@@ -525,7 +524,7 @@ grow_and_shrink_size(UI_Node *parent, Axis2 axis)
     
     if (grow_list.first != 0)
     {
-      while (extra_size > 0.0001)
+      for(;extra_size > 0.0001;)
       {
         F32 smallest = grow_list.first->node->size.c[axis];
         F32 second_smallest = f32_max; 
@@ -556,14 +555,14 @@ grow_and_shrink_size(UI_Node *parent, Axis2 axis)
           }
         }
         
-        if (growable_count == 0) 
+        if(growable_count == 0) 
         {  
           break;
         }
         
         size_to_add = Min(size_to_add, extra_size / growable_count);
         
-        if (size_to_add == 0) 
+        if(size_to_add == 0) 
         { 
           break;
         }
@@ -576,9 +575,9 @@ grow_and_shrink_size(UI_Node *parent, Axis2 axis)
           
           F32 *size = &child->size.c[axis];
           Assert(child->sizing[axis] == UISizing_Grow);
-          if (*size == smallest)
+          if(*size == smallest)
           {
-            if (*size < child->max_size.c[axis])
+            if(*size < child->max_size.c[axis])
             {
               *size += size_to_add;
               extra_size -= size_to_add;
@@ -588,16 +587,16 @@ grow_and_shrink_size(UI_Node *parent, Axis2 axis)
         }	
         
         
-        if (grown_count == 0) 
+        if(grown_count == 0) 
         {
           break;
         }
       }
     }
     
-    if (shrink_list.first != 0)
+    if(shrink_list.first != 0)
     {
-      while (extra_size < -0.0001)
+      while(extra_size < -0.0001)
       {
         F32 largets = shrink_list.first->node->size.c[axis];
         F32 second_largest = 0;
@@ -614,15 +613,15 @@ grow_and_shrink_size(UI_Node *parent, Axis2 axis)
           UI_Sizing sizing = child->sizing[axis];
           
           Assert(sizing == UISizing_Shrink);
-          if (size > minsize)
+          if(size > minsize)
           {
             shrinkable_count++;
-            if (size > largets)
+            if(size > largets)
             {
               second_largest = largets;
               largets = size;
             }
-            if (size < largets)
+            if(size < largets)
             {
               second_largest = Max(second_largest, size);
               size_to_sub = second_largest - largets;
@@ -630,7 +629,7 @@ grow_and_shrink_size(UI_Node *parent, Axis2 axis)
           }
         }
         
-        if (shrinkable_count == 0) 
+        if(shrinkable_count == 0) 
         {  
           break;
         }
@@ -856,7 +855,7 @@ draw_node_cmd(Arena *arena, UI_Draw_Cmd_List *draw_cmds, UI_Node *node)
   
 #if DEBUG
   // NOTE(erb): draw text highlight
-  if(global_debug_ctx->draw_text_highlight)
+  if(global_ui_debug_ctx->draw_text_highlight)
   {
     if(node->flags & UIFlags_DrawText)
     {
@@ -867,7 +866,7 @@ draw_node_cmd(Arena *arena, UI_Draw_Cmd_List *draw_cmds, UI_Node *node)
   }
   
   // NOTE(erb): draw border (outer size)
-  if(global_debug_ctx->draw_outer_size_line)
+  if(global_ui_debug_ctx->draw_outer_size_line)
   {
     if(!(node->flags & UIFlags_DrawText))
     {
@@ -879,7 +878,7 @@ draw_node_cmd(Arena *arena, UI_Draw_Cmd_List *draw_cmds, UI_Node *node)
   }
   
   // NOTE(erb): draw padding line (inner size)
-  if(global_debug_ctx->draw_inner_size_line)
+  if(global_ui_debug_ctx->draw_inner_size_line)
   {
     if(!(node->flags & UIFlags_DrawText))
     {
@@ -955,12 +954,12 @@ ui_init(UI_Ctx *ctx, Arena *arena)
 void 
 ui_update_input_state_from_events(UI_Event_State *state, GFX_Event_List *event_list)
 {
-  for(U32Each(idx, GFXKey_COUNT))
+  for(EachU32(idx, GFXKey_COUNT))
   {
     Button_State *key = (state->keys + idx);
     key->half_transition_count = 0;
   }
-  for(U32Each(idx, GFXMouseCode_COUNT))
+  for(EachU32(idx, GFXMouseCode_COUNT))
   {
     Button_State *button = (state->buttons + idx);
     button->half_transition_count = 0;
@@ -1012,6 +1011,35 @@ ui_update_input_state_from_events(UI_Event_State *state, GFX_Event_List *event_l
 }
 
 void
+ui_set_cursor(UI_Ctx *ctx, GFX_Cursor_Kind kind)
+{
+  if(ctx->cursor_api.set_func != 0)
+  {
+    ctx->cursor_api.set_func(kind, ctx->cursor_api.data);
+  }
+}
+
+void
+clipboard_api_set_str8(Clipboard_API *api, String8 str)
+{
+  if(api->set_str8_func != 0)
+  {
+    api->set_str8_func(str, api->data);
+  }
+}
+
+String8
+clipboard_api_push_str8(Clipboard_API *api, Arena *arena)
+{
+  String8 result = {0};
+  if(api->push_str8_func != 0)
+  {
+    result = api->push_str8_func(arena, api->data);
+  }
+  return(result);
+}
+
+void
 ui_begin_frame(UI_Ctx *ctx, UI_Font_Face face, GFX_Event_List *events, Range_V2f root_rect, F32 delta_time)
 {
   ctx->frame_tick += 1;
@@ -1023,7 +1051,7 @@ ui_begin_frame(UI_Ctx *ctx, UI_Font_Face face, GFX_Event_List *events, Range_V2f
   ZeroStruct(&ctx->hot_node);
   ctx->event_list = *events;
   ctx->default_font_face = face;
-  ctx->cursor_api.set_func(GFXCursorKind_Arrow, ctx->cursor_api.data);
+  ui_set_cursor(ctx, GFXCursorKind_Arrow);
   
   UIResetStack(ctx, padding);
   UIResetStack(ctx, align_x);
@@ -1627,7 +1655,7 @@ ui_comm_from_node(UI_Ctx *ui, UI_Node *node)
     
     if(result.hovered)
     {
-      ui->cursor_api.set_func(node->hover_cursor, ui->cursor_api.data);
+      ui_set_cursor(ui, node->hover_cursor);
       if(node->flags & UIFlags_HoverEffect)
       {
         // TODO(erb): this is test code

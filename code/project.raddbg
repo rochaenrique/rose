@@ -1,4 +1,4 @@
-// raddbg 0.9.28 project file
+// raddbg 0.9.29 project file
 
 recent_file: path: "fnt/stb_truetype/stb_truetype_fnt.c"
 recent_file: path: "examples/gfx_font.c"
@@ -84,12 +84,6 @@ watch_pin: expression: result
 watch_pin: expression: result
 target:
 {
-  executable: "builder/builder.exe"
-  arguments: "examples linux win32 infer"
-  working_directory: ""
-}
-target:
-{
   executable: "build/win32_playground.exe"
   working_directory: "../../marker"
 }
@@ -112,7 +106,6 @@ target:
 {
   executable: "build/win32_ui_main.exe"
   working_directory: "../../rose"
-  enabled: 1
 }
 target:
 {
@@ -125,3 +118,21 @@ target:
   working_directory: "../../rose"
 }
 theme: "Default (Dark)"
+tab_width: 2
+{ "\n": "C:/Users/erb/dev/rose/code/project.raddbg" }
+{ "\n": "C:/Users/erb/dev/rose/code/project.raddbg" }
+{ "\n": "C:/Users/erb/dev/rose/code/project.raddbg" }
+{ "\n": "C:/Users/erb/dev/rose/code/project.raddbg" }
+{ "\n": "C:/Users/erb/dev/rose/code/project.raddbg" }
+{ "\n": "C:/Users/erb/dev/rose/code/project.raddbg" }
+{ "\n": "C:/Users/erb/dev/rose/code/project.raddbg" }
+{ "\n": "C:/Users/erb/dev/rose/code/project.raddbg" }
+{ "\n": "C:/Users/erb/dev/rose/code/project.raddbg" }
+{ "\n": "C:/Users/erb/dev/rose/code/project.raddbg" }
+{ "\n": "C:/Users/erb/dev/rose/code/project.raddbg" }
+target:
+{
+  executable: "build/win32_broadcast.exe"
+  working_directory: ../
+  enabled: 1
+}

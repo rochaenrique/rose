@@ -1,13 +1,31 @@
+# Rose — Dev Notes & TODO
+
+Working notes, ideas and the running TODO list. For an overview of the project see the [README](../README.md).
+
 # TODO
 
 ## Now
- - Watch Window based App   
-   - Tabs be watch window with set expr
-     - Maybe change views to be a "context for expr ui rule"
-     - Views to be the context to an expression
-       - Expr might produce a UI piece that uses a View
 
- - eval filtering function
+ - EVAL EXTENSABILITY
+   - PLUGIN ITERATIVE COMPLIER AST -> IR_OP_LIST
+     - RYAN TALK (THE G.O.A.T.)
+
+ - IR Extensability
+   - IR: Tag types with some attributes (like is_ui_rule)
+   
+ - View/Watch: Use watch everywhere to edit stuff
+   - & edit generic options (Watch window write)
+
+ - Views in Watch window
+   - With "open in new tab" button
+   - MISSING: parameters for the view
+   - ISSUE: calendar ui not growing correctly
+   - Breaking API stuff
+     - Optionally cache interp in Watch_Eval if is custom ui type
+     - Custom type expansion array that checks in block tree creation
+     - Custom ui rendering if is custom ui type
+
+ - Watch: Pass global range and use it
 
  - show highlighted term when filtering lister
    - Maybe the simplest api is: 
@@ -15,10 +33,10 @@
      - function deals with showing the highlight
      - no need for fancy strings or stuff
 
-   - DONE? (needs work)
-     - Lister
-     - NewEvent/FocusEvent
-     - Calendar
+ - DONE? (needs work)
+   - Lister
+   - NewEvent/FocusEvent
+   - Calendar
 
  - popups to use cell lister
    - Color picker popup to use UI_Ctx popup
@@ -33,7 +51,41 @@
      - Worst case is just copying into I guess
    - Make it so typing creates new token before/after??
 
-## Fixes
+ - eval filtering function
+
+## Big STUFF
+ - Fix event bubbling / ui selection & focus
+ - Text Rendering / Usage (use Jimmy Lefevre library)
+
+## Conceptual Pendencies
+
+ - Watch Window based App 
+   - conceptual changes
+     - (eval, expansion state) -> tree(block)
+       - where block contains the root evaluation, from which it will evaluate its children and it contains a range from which to splice the children
+       - and have an expansion state where the id of the expression to expand is the cummulative hash of it and its parents
+     - so essentialy you have:
+       - (eval, expansion state) -> tree(block)
+       - tree(block) -> list(block, block range)
+       - (global range, list(block, block range)) -> list(eval)
+     - then we have
+       - list(eval) -> list(ui)
+     - the full ui path is
+       - eval -> tree(block) -> list(eval) -> list(ui)
+     - where the type 'lense' can override creating the tree(block) and the list(ui)
+     - also change the evaluation to evaluate any address?
+
+ - Block_Tree base case
+   - TEMP? FIX: have a expansion_not_slice in tree & have a is_header field in Block Range
+   - There is some confusion in the first node, because it can be a "colpsed expansion" which doesnt happen in any other case
+     - Imagine just after writing the expression in the watch, you get a header and no expansion, but this doesnt really make sense
+     - Since a header with no expansion doesnt occur in any other case.
+     - Also, the correct way to represent tree is one node per "arrow down", this would also mean no header only but that cannot happen 
+   - So there needs to be a change in the way the expansion is represented inside the tree
+     - Maybe a "expand_tree" which checks the current node and if it is expanded it changes its attributes but the block is allready created.
+     - This would mean we would, in the case of children expansions, need to check if expanded, build the block, then initialize it properly 
+
+## Fixes 
  - Make nill ui node
    - Return nil ui node in ui_node_from_key to avoid checks
  - Color picker hsv
@@ -42,11 +94,8 @@
  - Real tree removal in Panel tree
  - If Profile -> Change All ui recursive functions to use a TreeIterator
 
-## Tests  
+## App Features & Tests
  - Add simple status (OPEN, CLOSED), and some UI
-
- - Generic markdown-like file parsing and integration (like this one)
-   - Also TODO(erb): things
 
  - Add first citizen schedule
 
@@ -68,6 +117,21 @@
  - Very ergonomic quick add
    - With some set defaults and quick to change
    - Maybe have many quick-add templates and differend binds for each
+
+ - Different "sources" of information
+   - Where to actually get the information
+     - Local/Network database
+     - Local/Network single text file (like this one)
+     - Local/Network file system (structured)
+     - Local/Network .rose file
+     - Local/Network code repos with TODO & NOTE
+   - How to parse
+     - Single text file with prefixed ('-', '[x]')
+     - Structured file tree with extensions
+     - Structured file tree with TODOs
+     - .rose file
+     - Data base query
+     - Custom callback
 
  - Extensibility/Customizablity
    - Rose Expr Aliases / functions -> allow user to specify simple table-like aliases to functions or identifiers
@@ -162,3 +226,6 @@
    - Make clang output full paths
    - Compile on GCC
    - Improve flags system
+
+- 'Empty' Key Binding Combination: 
+  - when pressing a key combination that doesnt have a keymap, have a popover asking if you would like to map it to something

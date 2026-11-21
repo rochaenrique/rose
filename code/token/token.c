@@ -1,18 +1,4 @@
 B32
-char_is_identifier(I32 c)
-{
-  B32 result = (char_is_alphabetic(c) || c == '_' || c == '$');
-  return(result);
-}
-
-B32
-char_is_not_identifier(I32 c)
-{
-  B32 result = !char_is_identifier(c);
-  return(result);
-}
-
-B32
 char_is_operator(I32 c)
 {
   String8 s = S8Struct(&c, 1);
@@ -24,6 +10,22 @@ B32
 char_is_not_operator(I32 c)
 {
   B32 result = !char_is_operator(c);
+  return(result);
+}
+
+B32
+char_is_identifier(I32 c)
+{
+  B32 result = (char_is_alphabetic(c) || c == '_' || c == '$');
+  return(result);
+}
+
+B32
+char_is_not_identifier(I32 c)
+{
+  B32 result = (char_is_operator(c) || char_is_blank(c) ||
+                c == ']' || c == '[' || 
+                c == '(' || c == ')');
   return(result);
 }
 
@@ -105,6 +107,12 @@ token_list_from_str(Arena *arena, String8 str, String8 *error)
       token->str8 = str8_prefix(it, 1);
       skip_to_idx = 1;
     }
+    else if(c == '[' || c == ']')
+    {
+      token->kind = (c == '[') ? TokenKind_BracketOpen : TokenKind_BracketClose;
+      token->str8 = str8_prefix(it, 1);
+      skip_to_idx = 1;
+    }
     else if(char_is_digit(c))
     {
       U64 idx = 0;
@@ -135,11 +143,10 @@ token_list_from_str(Arena *arena, String8 str, String8 *error)
 void
 token_it_push_current_location(Token_Iterator *it)
 {
-  if(it->location_count+1 < ArraySize(it->locations))
+  if(AssertOrBool(it->location_count+1 < ArraySize(it->locations)))
   {
     it->locations[it->location_count++] = it->current;
   }
-  else InvalidCodePath;
 }
 
 Token *
@@ -154,7 +161,7 @@ Token *
 token_it_pop_or_restore_last_location(Token_Iterator *it, B32 restore)
 {
   Token *current = it->current;
-  if(it->location_count > 0)
+  if(AssertOrBool(it->location_count > 0))
   {
     if(restore)
     {
@@ -162,7 +169,6 @@ token_it_pop_or_restore_last_location(Token_Iterator *it, B32 restore)
     }
     it->location_count--;
   }
-  else InvalidCodePath;
   return(current);
 }
 

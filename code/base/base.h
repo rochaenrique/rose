@@ -85,15 +85,18 @@ typedef void Void_Func(void);
 #ifdef RADDBG_MARKUP_STUBS
 #define Assert(condition) do { if (!(condition)) *(volatile int *)0 = 0; } while (0)
 #else
-#define Assert(condition) raddbg_break_if(!(condition))
+#define Assert(condition) (raddbg_break_if(!(condition)), condition)
 #endif //RADDBG_MARKUP_STUBS
 
-#define AssertImplies(condition, implies) do { if ((condition)) Assert((implies)); } while (0)
+#define AssertImplies(condition, implies) (condition && Assert((implies)), condition)
 
 #else
 #define Assert(condition) ((void)0)
 #define AssertImplies() ((void)0)
 #endif //DEBUG
+
+#define AssertOrBool(condition) (Assert((condition)), condition)
+#define AssertOrUSub(minuend, subtrahend) (Assert(((minuend) >= (subtrahend))), ((minuend) - (subtrahend)))
 
 #define InvalidCodePath Assert(false)
 #define InvalidDefaultCase default: { InvalidCodePath; } break
@@ -104,16 +107,23 @@ typedef void Void_Func(void);
 #define Implement() ((void)0)
 #endif //DEBUG
 
+#define StaticAssert(condition, name) typedef int static_assert_dummy_##name [(condition) ? 1 : -1];
+
+#define Stringify(a) #a
+#define StringifyAfter(a) Stringify(a)
+
 file_local I32 _global_defer_index_ = 0;
 #define DeferLoop(begin, end) for(_global_defer_index_ = ((begin), 0); !_global_defer_index_; _global_defer_index_ += 1, (end))
 
-#define U32Each(it, count)           U32 it = 0;             (it) < (count);                         (it) += 1
-#define U64Each(it, count)           U64 it = 0;             (it) < (count);                         (it) += 1
-#define EachIdx(it, array)           U32 it = 0;             (it) < ArraySize((array));              (it) += 1
-#define EachElement(Type, it, array) Type *it = (array);     (it) != ((array) + ArraySize((array))); (it) += 1
-#define EachNode(Type, it, first)    Type *it = (first);     (it) != 0;                              (it) = (it)->next
-#define U32EachInRange(it, range)    U32 it = (range).start; (it) <= (range).end; (it) += 1
-#define U64EachInRange(it, range)    U64 it = (range).start; (it) <= (range).end; (it) += 1
+#define EachU32(it, count)            U32   it = 0;             (it) < (count);            (it) += 1
+#define EachU64(it, count)            U64   it = 0;             (it) < (count);            (it) += 1
+#define EachInRangeU32(it, range)     U32   it = (range).start; (it) <= (range).end;       (it) += 1
+#define EachInRangeU64(it, range)     U64   it = (range).start; (it) <= (range).end;       (it) += 1
+#define EachIdx(it, array)            U32   it = 0;             (it) < ArraySize((array)); (it) += 1
+#define EachPtr(Type, it, ptr, count) Type *it = (ptr);         (it) < ((ptr) + (count));  (it) += 1
+#define EachNode(Type, it, first)     Type *it = (first);       (it) != 0;                 (it) = (it)->next
+
+#define EachElement(Type, it, array) EachPtr(Type, it, array, ArraySize(array))
 
 #define SLLStackPop(node)                 ((node) = (node)->next)
 #define SLLStackPush(first, node)         ((node)->next = (first), (first) = (node))
@@ -125,7 +135,8 @@ file_local I32 _global_defer_index_ = 0;
 ((node)->next ? ((node)->next->prev = (node)->prev) : ((last) = (node)->prev)))
 
 #define ArrayCopy(src, dest, count)        mem_copy((U8 *)(src), (U8 *)(dest), (count)*sizeof(*src))
-#define ArraySetValues(ptr, count, value)  do { for (U32Each(set_value_idx, (count))) *((ptr) + set_value_idx) = (value); } while (0)
+#define ArraySetValues(ptr, count, value)  do { for(EachU32(idx, (count))) (ptr)[count] = (value); } while(0)
+
 
 #if COMP_MSVC
 #define printf_format_arg _Printf_format_string_

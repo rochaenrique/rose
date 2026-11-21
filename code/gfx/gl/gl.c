@@ -92,7 +92,7 @@ gl_make_program(Shader_Param *shader_params, U32 shader_count)
   Scratch scratch = scratch_begin(0, 0);
   GLuint *shaders = PushArray(scratch.arena, shader_count, GLuint);
   
-  for(U32Each(idx, shader_count))
+  for(EachU32(idx, shader_count))
   {
     GLuint sh = gl_create_compile_shader(shader_params[idx]);
     Assert(sh != 0);
@@ -112,7 +112,7 @@ gl_make_program(Shader_Param *shader_params, U32 shader_count)
     }
   }
   
-  for (U32Each(idx, shader_count))
+  for (EachU32(idx, shader_count))
   {
     GL(glDeleteShader(shaders[idx]));
   }

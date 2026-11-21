@@ -45,7 +45,7 @@ table_row_varg(Arena *arena, Table *table, va_list source_args)
   Assert(arena);
   Assert(table);
   
-  String8_Builder sb = {0};
+  String8_Builder sb = str8_builder_make(128);
   va_list args;
   va_copy(args, source_args);
   Scratch scratch = scratch_begin(&arena, 1);
@@ -67,7 +67,7 @@ table_row_varg(Arena *arena, Table *table, va_list source_args)
         
         Scratch arg_scratch = scratch_begin(conflicts, ArraySize(conflicts));
         {
-          String8 resolved = push_str8f(arg_scratch.arena, "%.*s%*.s", S8Expand(label), space_left, "");
+          String8 resolved = push_str8f(arg_scratch.arena, "%S%*.s", label, space_left, "");
           str8_builder_str(scratch.arena, &sb, resolved);
         }
         scratch_end(&arg_scratch);
@@ -79,8 +79,12 @@ table_row_varg(Arena *arena, Table *table, va_list source_args)
         String8 label = va_arg(args, String8);
         Scratch arg_scratch = scratch_begin(conflicts, ArraySize(conflicts));
         {
-          String8 resolved = push_str8f(arg_scratch.arena, "%.*s", S8Expand(label));
+#if 0
+          String8 resolved = push_str8f(arg_scratch.arena, "%S", label);
           str8_builder_str(scratch.arena, &sb, resolved);
+#else
+          str8_builder_str(scratch.arena, &sb, label);
+#endif
         }
         scratch_end(&arg_scratch);
         
@@ -112,11 +116,11 @@ table_row_varg(Arena *arena, Table *table, va_list source_args)
     }
     else
     {
-      str8_builder_char(scratch.arena, &sb, *it);
+      str8_builder_char(scratch.arena, &sb, *it, 1);
     }
   }
   
-  String8 result = push_str8_copy(arena, sb.buffer);
+  String8 result = push_str8_from_builder(arena, &sb);
   va_end(args);
   scratch_end(&scratch);
   return(result);
@@ -385,7 +389,7 @@ B32
 file_contains_entry_point_function(String8 path, Entry_Point_Kind *entry_kind_result)
 {
   B32 result = false;
-  for (U32Each(entry_kind, EntryPointKind_COUNT))
+  for (EachU32(entry_kind, EntryPointKind_COUNT))
   {
     String8 func_name = entry_point_kind_labels[entry_kind];
     if (os_file_contains_str_case_insens(path, func_name))
@@ -402,7 +406,7 @@ B32
 is_language_extension(String8 ext, Language_Kind *language_result)
 {
   B32 result = false;
-  for (U32Each(language_kind, LanguageKind_COUNT))
+  for (EachU32(language_kind, LanguageKind_COUNT))
   {
     String8_Array extensions = languages_info[language_kind].extensions;
     if (str8_array_contains(extensions, ext))
@@ -419,22 +423,22 @@ get_entry_points(Arena *arena, String8_List files)
 { 
   Entry_Point_List result = {0};
   
-  for (EachNode(String8_Node, file, files.first))
+  for(EachNode(String8_Node, file, files.first))
   {
     String8 path = file->str;
     String8 extension = path_extension(path);
     
     Language_Kind language = 0;
-    if (is_language_extension(extension, &language))
+    if(is_language_extension(extension, &language))
     {
       Entry_Point_Kind entry_kind = 0;
-      if (file_contains_entry_point_function(path, &entry_kind))
+      if(file_contains_entry_point_function(path, &entry_kind))
       {
         Entry_Point *entry = PushStruct(arena, Entry_Point);
-        entry->path = path;
+        entry->path = push_str8_copy(arena, path);
         entry->kind = entry_kind;
         entry->language = language;
-        SLLQueueAppend(entry, result.first, result.last);
+        SLLQueueAppend(result.first, result.last, entry);
       }
     }
   }
@@ -455,22 +459,18 @@ String8
 str8_from_compiler_flags(Arena *arena, Compiler_Kind compiler, Compiler_Flag_Array_Flag flags)
 {
   String8 *flags_strings = compilers_infos[compiler].flag_strings;
-  
-  Scratch scratch = scratch_begin(&arena, 1);
-  String8_Builder sb = {0};
-  for (U32Each(flag_it, CompilerFlag_COUNT))
+  String8 str_items[CompilerFlag_COUNT];
+  U32 flag_count = 0;
+  for(EachU32(flag_it, CompilerFlag_COUNT))
   {
-    if (flags[flag_it])
+    if(flags[flag_it])
     {
-      str8_builder_str(arena, &sb, flags_strings[flag_it]);
-      if (flag_it < CompilerFlag_COUNT-1)
-      {
-        str8_builder_char(scratch.arena, &sb, ' ');
-      }
+      str_items[flag_count++] = flags_strings[flag_it];
     }
   }
-  String8 result = push_str8_copy(arena, sb.buffer);
-  scratch_end(&scratch);
+  String8_Array array = {.items = str_items, .count = flag_count};
+  String8_Join join = {.sep = S8(" ")};
+  String8 result = str8_array_join(arena, &array, &join);
   return(result);
 }
 
@@ -495,7 +495,7 @@ Compiler_Kind_Maybe
 str8_to_compiler_kind(String8 str)
 {
   Compiler_Kind_Maybe result = {0};
-  for (U32Each(compiler, CompilerKind_COUNT))
+  for (EachU32(compiler, CompilerKind_COUNT))
   {
     String8_Array compiler_labels = compilers_infos[compiler].labels;
     if (str8_array_contains(compiler_labels, str))
@@ -519,7 +519,7 @@ OS_Kind_Maybe
 str8_to_os_kind(String8 str)
 {
   OS_Kind_Maybe result = {0};
-  for (U32Each(os, OSKind_COUNT))
+  for (EachU32(os, OSKind_COUNT))
   {
     String8_Array os_labels = oss_infos[os].labels;
     if (str8_array_contains(os_labels, str))
@@ -540,7 +540,7 @@ parse_options(String8_Array args)
   B32 has_compiler = false;
   B32 has_os = false;
   
-  for (U32Each(arg_idx, args.count))
+  for (EachU32(arg_idx, args.count))
   {
     String8 arg = args.items[arg_idx];
     
@@ -605,6 +605,9 @@ struct Command_Cache
   Arena arena;
   Command_Strings compiler_strings[CompilerKind_COUNT];
   String8 os_compiler_library_strings[OSKind_COUNT*CompilerKind_COUNT];
+  
+  String8_List project_includes;
+  Compiler_Flag_Array_Flag project_compiler_flags;
 };
 
 Command_Strings
@@ -626,13 +629,15 @@ generate_compiler_build_command(Arena *arena,
       
       // NOTE(erb): prefix
       {
-        String8 includes_str = str8_list_flatten_prefix_nodes(scratch.arena, &includes, S8(" -I"));
+        String8_Join includes_join = {.prefix = S8(" -I")};
+        String8 includes_str = str8_list_join(scratch.arena, &includes, &includes_join);
         String8_List list = {0};
         str8_list_push(scratch.arena, &list, (compiler == CompilerKind_Clang)?S8("clang"):S8("gcc"));
         str8_list_push(scratch.arena, &list, S8("-fsanitize=address,undefined"));
         str8_list_push(scratch.arena, &list, project_flags);
         str8_list_push(scratch.arena, &list, includes_str);
-        cmd.prefix = str8_list_flatten_delim(arena, list, S8(" "));
+        String8_Join prefix_join = {.sep = S8(" ")};
+        cmd.prefix = str8_list_join(arena, &list, &prefix_join);
       }
     } break;
     
@@ -640,12 +645,11 @@ generate_compiler_build_command(Arena *arena,
     {
       // NOTE(erb): prefix
       {
-        String8 includes_str = str8_list_flatten_prefix_nodes(scratch.arena, &includes, S8(" /I"));
-        String8_List list = {0};
-        str8_list_push(scratch.arena, &list, S8("cl /FC /nologo"));
-        str8_list_push(scratch.arena, &list, project_flags);
-        str8_list_push(scratch.arena, &list, includes_str);
-        cmd.prefix = str8_list_flatten_delim(arena, list, S8(" "));
+        String8_Join includes_join = {.prefix = S8(" /I")};
+        String8 includes_str = str8_list_join(scratch.arena, &includes, &includes_join);
+        String8_Array parts = S8ArrayLit(S8("cl /FC /nologo"), project_flags, includes_str);
+        String8_Join prefix_join = {.sep = S8(" ")};
+        cmd.prefix = str8_array_join(arena, &parts, &prefix_join);
       }
       
       // NOTE(erb): postfix
@@ -678,7 +682,9 @@ entry_points_from_path(Arena *arena, String8 target)
   {
     case FileKind_Text: 
     {
-      str8_list_push(files_scratch.arena, &files, target);
+      String8 copy = push_str8_copy(files_scratch.arena, target);
+      String8 unix = str8_replace_char(copy, '\\', '/');
+      str8_list_push(files_scratch.arena, &files, unix);
     } break;
     
     case FileKind_Directory:
@@ -706,7 +712,7 @@ OS_Kind_Maybe
 os_contained_in_str(String8 path)
 {
   OS_Kind_Maybe result = {0};
-  for (U32Each(os_idx, OSKind_COUNT))
+  for (EachU32(os_idx, OSKind_COUNT))
   {
     String8_Array *labels = &oss_infos[os_idx].labels;
     if (str8_contains_str_array_node(path, labels))
@@ -733,13 +739,15 @@ os_path_from_unix_path(Arena *arena, OS_Kind origin, String8 path)
 }
 
 Command_Strings *
-get_commpiler_strings(Command_Cache *command_cache, Compiler_Kind compiler)
+get_compiler_strings(Command_Cache *command_cache, Compiler_Kind compiler)
 {
-  Command_Strings *result = 0;
-  Command_Strings *test = (command_cache->compiler_strings + compiler);
-  if (test->prefix.size > 0 || test->postfix.size > 0)
+  Command_Strings *result = (command_cache->compiler_strings + compiler);
+  if(result->prefix.size == 0 && result->postfix.size == 0)
   {
-    result = test;
+    *result = generate_compiler_build_command(&command_cache->arena, 
+                                              compiler,
+                                              command_cache->project_includes,
+                                              command_cache->project_compiler_flags);
   }
   return(result);
 }
@@ -774,12 +782,12 @@ get_compiler_output_flag(Arena *arena, Compiler_Kind compiler, String8 unix_path
   {
     case CompilerKind_MSVC: 
     {
-      result = push_str8f(arena, "/Fe:\"%.*s.exe\"", S8Expand(unix_path_file_name(unix_path)));
+      result = push_str8f(arena, "/Fe:\"%S.exe\"", unix_path_file_name(unix_path));
     } break;
     case CompilerKind_GCC:
     case CompilerKind_Clang:
     {
-      result = push_str8f(arena, "-o %.*s", S8Expand(unix_path_file_name(unix_path)));
+      result = push_str8f(arena, "-o %S", unix_path_file_name(unix_path));
     } break;
   }
   return(result);
@@ -797,7 +805,8 @@ get_os_libs_string(Command_Cache *command_cache, OS_Kind os, Compiler_Kind compi
     {
       String8_Array os_libs = oss_infos[os].libraries;
       String8 compiler_lib_delim = compilers_infos[compiler].lib_delim;
-      *test = str8_array_flatten_prefix_nodes(&command_cache->arena, &os_libs, compiler_lib_delim);
+      String8_Join join = {.sep = compiler_lib_delim};
+      *test = str8_array_join(&command_cache->arena, &os_libs, &join);
     }
     result = *test;
   }
@@ -817,30 +826,16 @@ build_command_str(Arena *arena, Command_Cache *command_cache, OS_Kind os, Compil
                   String8 path, String8 unix_output_path)
 {
   String8 result = {0};
-  Command_Strings *command = get_commpiler_strings(command_cache, compiler);
+  Command_Strings *command = get_compiler_strings(command_cache, compiler);
   String8 os_libs_str = get_os_libs_string(command_cache, os, compiler);
   String8 output_flag = get_compiler_output_flag(arena, compiler, unix_output_path);
   
   String8 cross_compile_cmd = os_cross_compile_command_table[os_kind_this][os];
-  if (cross_compile_cmd.size == 0)
-  {
-    result = push_str8f(arena, "%.*s %.*s %.*s %.*s %.*s",
-                        S8Expand(command->prefix),
-                        S8Expand(output_flag),
-                        S8Expand(path),
-                        S8Expand(os_libs_str),
-                        S8Expand(command->postfix));
-  }
-  else
-  {
-    result = push_str8f(arena, "%.*s %.*s %.*s %.*s %.*s %.*s",
-                        S8Expand(cross_compile_cmd),
-                        S8Expand(command->prefix),
-                        S8Expand(output_flag),
-                        S8Expand(path),
-                        S8Expand(os_libs_str),
-                        S8Expand(command->postfix));
-  }
+  
+  String8_Array cmd_parts = S8ArrayLit(cross_compile_cmd, command->prefix, 
+                                       output_flag, path, os_libs_str, command->postfix);
+  String8_Join join = {.sep = S8(" ")};
+  result = str8_array_join(arena, &cmd_parts, &join);
   return(result);
 }
 
@@ -866,7 +861,7 @@ build_entry_point(Arena *cmd_list_arena, Build_Command_List *cmd_list,
   // NOTE(erb): os from the path of the file
   OS_Array_Flag oss = {0};
   OS_Kind_Maybe os_in_path = os_contained_in_str(entry->path);
-  for (U32Each(os, OSKind_COUNT))
+  for (EachU32(os, OSKind_COUNT))
   {
     if (options->oss[os])
     {
@@ -884,7 +879,7 @@ build_entry_point(Arena *cmd_list_arena, Build_Command_List *cmd_list,
   // NOTE(erb): compilers from language and options
   Compiler_Array_Flag compilers = {0};
   
-  for (U32Each(comp, CompilerKind_COUNT))
+  for (EachU32(comp, CompilerKind_COUNT))
   {
     B32 language = languages_info[entry->language].compilers[comp];
     compilers[comp] = language && options->compilers[comp];
@@ -894,7 +889,7 @@ build_entry_point(Arena *cmd_list_arena, Build_Command_List *cmd_list,
   String8 unix_relative = unix_concat_path(scratch.arena, S8(".."), entry->path);
   
   // NOTE(erb): build the command for every configuration
-  for (U32Each(os, OSKind_COUNT))
+  for (EachU32(os, OSKind_COUNT))
   {
     if (oss[os] && can_compile_to_os(os))
     {
@@ -911,12 +906,11 @@ build_entry_point(Arena *cmd_list_arena, Build_Command_List *cmd_list,
         String8 label = os_get_main_label(os);
         String8 dir_part = unix_path_dir_part(unix_relative);
         String8 file_part = unix_path_file_part(unix_relative);
-        unix_output_path = push_str8f(cmd_scratch.arena, "%.*s%.*s_%.*s", 
-                                      S8Expand(dir_part), S8Expand(label), S8Expand(file_part));
+        unix_output_path = push_str8f(cmd_scratch.arena, "%S%S_%S", dir_part, label, file_part);
       }
       
       U32 compiler_count = 0;
-      for (U32Each(comp, CompilerKind_COUNT))
+      for (EachU32(comp, CompilerKind_COUNT))
       {
         if (compilers[comp] && is_os_compiler_valid(os, comp))
         {
@@ -924,7 +918,7 @@ build_entry_point(Arena *cmd_list_arena, Build_Command_List *cmd_list,
         }
       }
       
-      for (U32Each(comp, CompilerKind_COUNT))
+      for (EachU32(comp, CompilerKind_COUNT))
       {
         B32 is_prefered = false;
         if(options->infer_best_compiler_for_os)
@@ -944,8 +938,7 @@ build_entry_point(Arena *cmd_list_arena, Build_Command_List *cmd_list,
             String8 label = compiler_get_main_label(comp);
             String8 dir_part = unix_path_dir_part(unix_output_path);
             String8 file_part = unix_path_file_part(unix_output_path);
-            unix_output_path = push_str8f(cmd_scratch.arena, "%.*s%.*s_%.*s", 
-                                          S8Expand(dir_part), S8Expand(label), S8Expand(file_part));
+            unix_output_path = push_str8f(cmd_scratch.arena, "%S%S_%S", dir_part, label, file_part);
           }
           
           
@@ -957,7 +950,7 @@ build_entry_point(Arena *cmd_list_arena, Build_Command_List *cmd_list,
           cmd->built_str = build_command_str(cmd_list_arena, command_cache, os, 
                                              comp, os_relative_path, unix_output_path);
           
-          SLLQueueAppend(cmd, cmd_list->first, cmd_list->last);
+          SLLQueueAppend(cmd_list->first, cmd_list->last, cmd);
           cmd_list->count++;
           
           // TODO(erb): add some run command to file and the post-command script
@@ -989,7 +982,7 @@ rebuild_file(String8 file_path, String8_List includes, Compiler_Flag_Array_Flag 
     Compiler_Array_Flag compilers = {0};
     ArrayCopy(languages_info[language].compilers, compilers, CompilerKind_COUNT);
     
-    for (U32Each(comp, CompilerKind_COUNT))
+    for (EachU32(comp, CompilerKind_COUNT))
     {
       if (compilers[comp] && is_os_compiler_valid(os_kind_this, comp))
       {
@@ -1014,10 +1007,10 @@ get_enviornment_compiler_flags(Compiler_Flag_Array_Flag flags)
   
   if (cc_flags_var.value != 0)
   {
-    String8_List flags_list = str8_split_blank(scratch.arena, str8_remove_char(cc_flags_var, '"'));
+    String8_List flags_list = str8_split_blank(scratch.arena, push_str8_without_char(scratch.arena, cc_flags_var, '"'));
     for (EachNode(String8_Node, node, flags_list.first))
     {
-      for (U32Each(flag_it, CompilerFlag_COUNT))
+      for (EachU32(flag_it, CompilerFlag_COUNT))
       {
         Compiler_Flag_Info info = compiler_flags_info[flag_it];
         if (str8_equals(node->str, info.env_str))
@@ -1058,17 +1051,17 @@ column_max_str8(Column_Kind kind, String8 label)
 void 
 column_max_compute_meta()
 {
-  for(U32Each(os, OSKind_COUNT))
+  for(EachU32(os, OSKind_COUNT))
   {
     column_max_str8(ColumnKind_OS, os_get_main_label(os));
   }
   
-  for(U32Each(comp, CompilerKind_COUNT))
+  for(EachU32(comp, CompilerKind_COUNT))
   {
     column_max_str8(ColumnKind_Compiler, compiler_get_main_label(comp));
   }
   
-  for(U32Each(idx, CompilerFlag_COUNT))
+  for(EachU32(idx, CompilerFlag_COUNT))
   {
     Compiler_Flag_Info *info = (compiler_flags_info + idx);
     column_max_str8(ColumnKind_DebugFlag, info->label);
@@ -1120,25 +1113,26 @@ main(int argc, char **argv)
   
   Compiler_Flag_Array_Flag project_compilation_flags = {0};
   project_compilation_flags[CompilerFlag_FullWarn] = true;
+  project_compilation_flags[CompilerFlag_Debug] = true;
   project_compilation_flags[CompilerFlag_NoWarnNamelessMemberStructs] = true;
   //project_compilation_flags[CompilerFlag_NoWarnInitalizedNotUsed] = true;
   project_compilation_flags[CompilerFlag_NoWarnParameterNotReferenced] = true;
   
   get_enviornment_compiler_flags(project_compilation_flags);
   
-  os_logf("[target dir '%.*s']", S8Expand(target_dir));
+  os_logf("[target dir '%S']", target_dir);
   
   os_log(S8("[includes]"));
   for(EachNode(String8_Node, node, project_includes.first))
   {
-    os_logf("  [%.*s]", S8Expand(node->str));
+    os_logf("  [%S]", node->str);
   }
   
   os_log(S8("[flags]"));
   {
     Column_Kind columns[] = {ColumnKind_DebugFlag};
     Table table = table_make(arena, "  [%T = %s]", columns, ArraySize(columns));
-    for (U32Each(flag_it, CompilerFlag_COUNT))
+    for (EachU32(flag_it, CompilerFlag_COUNT))
     {
       table_row_log(&table, 
                     compiler_flags_info[flag_it].label, 
@@ -1164,7 +1158,7 @@ main(int argc, char **argv)
       B32 created_dir = os_create_directory(target_dir);
       if (!deleted_dir && !created_dir)
       {
-        os_logf("[failed clear dir '%.*s]'", S8Expand(target_dir));
+        os_logf("[failed clear dir '%S]'", target_dir);
       }
     }
     
@@ -1180,15 +1174,19 @@ main(int argc, char **argv)
       
       Command_Cache command_cache = {0};
       command_cache.arena = push_sub_arena(arena, KB(2));
+      command_cache.project_includes = project_includes;
+      ArrayCopy(project_compilation_flags, 
+                command_cache.project_compiler_flags, 
+                sizeof(project_compilation_flags));
       {
         // NOTE(erb): generate commands
-        for (U32Each(comp, CompilerKind_COUNT))
+        for(EachU32(comp, CompilerKind_COUNT))
         {
-          if (options.compilers[comp])
+          if(options.compilers[comp])
           {
             Command_Strings *cmd = (command_cache.compiler_strings + comp);
-            *cmd = generate_compiler_build_command(&command_cache.arena, comp, project_includes, 
-                                                   project_compilation_flags);
+            *cmd = generate_compiler_build_command(&command_cache.arena, comp, command_cache.project_includes, 
+                                                   command_cache.project_compiler_flags);
           }
         }
       }
@@ -1257,7 +1255,7 @@ main(int argc, char **argv)
     }
     else
     {
-      os_logf("no entry points in %.*s", S8Expand(options.target_path));
+      os_logf("no entry points in %S", options.target_path);
     }
   }
   else

@@ -29,7 +29,7 @@ main()
     os_handle_bad_error(err_get_last_error());
   } 
   
-  for (U32Each(tick, 100000000))
+  for (EachU32(tick, 100000000))
   {
     GFX_Window windows[31];
     

@@ -15,7 +15,7 @@ thread_context_get_scratch(Thread_Context *context, Arena **conflicts, U32 confl
   for(EachElement(Arena, thread_arena, context->arenas))
   {
     B32 not_conflict = true;
-    for(U32Each(conflict_idx, conflict_count)) 
+    for(EachU32(conflict_idx, conflict_count)) 
     {
       Arena *conflict_arena = conflicts[conflict_idx];
       if(thread_arena == conflict_arena) 

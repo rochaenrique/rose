@@ -94,38 +94,38 @@ ui_cursor_and_highlight(UI_Ctx *ctx, V2f pos, F32 height, UI_Text *text, Text_Ed
   }
 }
 
-#define bind(key, modifiers, flags, delta) \
+#define BIND_ACT(key, modifiers, flags, delta) \
 [(key)][(modifiers & GFXModifiers_Control) != 0][((modifiers) & GFXModifiers_Shift) != 0] = {(flags),(delta),0}
 Text_Action text_action_from_event_table[][2][2] = 
 {
-  bind(GFXKey_Left, 0, TextActionFlags_DeltaPickSelectSide, -1),
-  bind(GFXKey_Left, GFXModifiers_Shift, TextActionFlags_KeepMark, -1),
-  bind(GFXKey_Left, GFXModifiers_Control, TextActionFlags_WordScan, -1),
-  bind(GFXKey_Left, GFXModifiers_Shift|GFXModifiers_Control, TextActionFlags_KeepMark|TextActionFlags_WordScan, -1),
+  BIND_ACT(GFXKey_Left, 0, TextActionFlags_DeltaPickSelectSide, -1),
+  BIND_ACT(GFXKey_Left, GFXModifiers_Shift, TextActionFlags_KeepMark, -1),
+  BIND_ACT(GFXKey_Left, GFXModifiers_Control, TextActionFlags_WordScan, -1),
+  BIND_ACT(GFXKey_Left, GFXModifiers_Shift|GFXModifiers_Control, TextActionFlags_KeepMark|TextActionFlags_WordScan, -1),
   
-  bind(GFXKey_Right, 0, TextActionFlags_DeltaPickSelectSide, 1),
-  bind(GFXKey_Right, GFXModifiers_Shift, TextActionFlags_KeepMark, 1),
-  bind(GFXKey_Right, GFXModifiers_Control, TextActionFlags_WordScan, 1),
-  bind(GFXKey_Right, GFXModifiers_Shift|GFXModifiers_Control, TextActionFlags_KeepMark|TextActionFlags_WordScan, 1),
+  BIND_ACT(GFXKey_Right, 0, TextActionFlags_DeltaPickSelectSide, 1),
+  BIND_ACT(GFXKey_Right, GFXModifiers_Shift, TextActionFlags_KeepMark, 1),
+  BIND_ACT(GFXKey_Right, GFXModifiers_Control, TextActionFlags_WordScan, 1),
+  BIND_ACT(GFXKey_Right, GFXModifiers_Shift|GFXModifiers_Control, TextActionFlags_KeepMark|TextActionFlags_WordScan, 1),
   
-  bind(GFXKey_Delete, 0, TextActionFlags_Delete|TextActionFlags_ZeroDeltaWithSelect, 1),
-  bind(GFXKey_Delete, GFXModifiers_Control, TextActionFlags_Delete|TextActionFlags_WordScan|TextActionFlags_ZeroDeltaWithSelect, 1),
+  BIND_ACT(GFXKey_Delete, 0, TextActionFlags_Delete|TextActionFlags_ZeroDeltaWithSelect, 1),
+  BIND_ACT(GFXKey_Delete, GFXModifiers_Control, TextActionFlags_Delete|TextActionFlags_WordScan|TextActionFlags_ZeroDeltaWithSelect, 1),
   
-  bind(GFXKey_Backspace, 0, TextActionFlags_Delete|TextActionFlags_ZeroDeltaWithSelect, -1),
-  bind(GFXKey_Backspace, GFXModifiers_Control, TextActionFlags_Delete|TextActionFlags_WordScan|TextActionFlags_ZeroDeltaWithSelect, -1),
+  BIND_ACT(GFXKey_Backspace, 0, TextActionFlags_Delete|TextActionFlags_ZeroDeltaWithSelect, -1),
+  BIND_ACT(GFXKey_Backspace, GFXModifiers_Control, TextActionFlags_Delete|TextActionFlags_WordScan|TextActionFlags_ZeroDeltaWithSelect, -1),
   
-  bind(GFXKey_C, GFXModifiers_Control, TextActionFlags_Copy,  0),
-  bind(GFXKey_X, GFXModifiers_Control, TextActionFlags_Cut,   0),
-  bind(GFXKey_V, GFXModifiers_Control, TextActionFlags_Paste, 0),
+  BIND_ACT(GFXKey_C, GFXModifiers_Control, TextActionFlags_Copy,  0),
+  BIND_ACT(GFXKey_X, GFXModifiers_Control, TextActionFlags_Cut,   0),
+  BIND_ACT(GFXKey_V, GFXModifiers_Control, TextActionFlags_Paste, 0),
   
   // emacs style
-  bind(GFXKey_F, GFXModifiers_Control, TextActionFlags_DeltaPickSelectSide, 1),
-  //bind(GFXKey_F, GFXModifiers_Alt, TextActionFlags_WordScan, 1),
+  BIND_ACT(GFXKey_F, GFXModifiers_Control, TextActionFlags_DeltaPickSelectSide, 1),
+  //BIND_ACT(GFXKey_F, GFXModifiers_Alt, TextActionFlags_WordScan, 1),
   
-  bind(GFXKey_B, GFXModifiers_Control, TextActionFlags_DeltaPickSelectSide, -1),
-  //bind(GFXKey_B, GFXModifiers_Alt, TextActionFlags_WordScan, -1),
+  BIND_ACT(GFXKey_B, GFXModifiers_Control, TextActionFlags_DeltaPickSelectSide, -1),
+  //BIND_ACT(GFXKey_B, GFXModifiers_Alt, TextActionFlags_WordScan, -1),
 };
-#undef bind
+#undef BIND_ACT
 
 Text_Action 
 text_action_from_event(GFX_Event *event) 
@@ -230,11 +230,8 @@ text_cmd_from_state_and_action(Arena *arena, Clipboard_API *clipboard_api, Strin
   // NOTE(erb): paste
   else if (action->flags & TextActionFlags_Paste)
   {
-    if(clipboard_api->push_str8_func != 0)
-    {
-      cmd.replace_str = clipboard_api->push_str8_func(arena, clipboard_api->data);
-      cmd.replace_range = rng_u64(state->cursor, state->mark);
-    }
+    cmd.replace_str = clipboard_api_push_str8(clipboard_api, arena);
+    cmd.replace_range = rng_u64(state->cursor, state->mark);
   }
   
   // NOTE(erb): keep mark
@@ -265,9 +262,9 @@ apply_text_action(Clipboard_API *clipboard_api, Text_Action action, Text_Edit_St
     state->cursor = Cap(text_cmd.new_cursor, 0, (I64)input_writer->str.size); 
     state->mark = Cap(text_cmd.new_mark, 0, (I64)input_writer->str.size); 
     
-    if (text_cmd.copy_str.size > 0 && clipboard_api->set_str8_func != 0)
+    if(text_cmd.copy_str.size > 0 && clipboard_api->set_str8_func != 0)
     {
-      clipboard_api->set_str8_func(text_cmd.copy_str, clipboard_api->data);
+      clipboard_api_set_str8(clipboard_api, text_cmd.copy_str);
     }
     
     scratch_end(&scratch);
@@ -352,6 +349,8 @@ void
 ui_line_input_update_state(UI_Ctx *ui, UI_Line_Input_State *state)
 {
   Assert(state != 0);
+  state->scroll_timer = Cap0(state->scroll_timer - (F32)ui->frame_delta_time);
+  
   UI_Key key = state->key;
   B32 is_focused = ui_key_equals(key, UIGetStackValue(ui, nav_interface_key));
   
@@ -489,7 +488,7 @@ ui_line_input_update_state(UI_Ctx *ui, UI_Line_Input_State *state)
   
   if(out.hovered)
   {
-    ui->cursor_api.set_func(GFXCursorKind_Beam, ui->cursor_api.data);
+    ui_set_cursor(ui, GFXCursorKind_Beam);
   }
 }
 
@@ -497,8 +496,7 @@ UI_Line_Input_State *
 ui_line_input(UI_Ctx *ui, UI_Key key)
 {
   UI_Line_Input_State *state = ui_line_input_state_from_key(ui, key);
-  Assert(state);
-  state->scroll_timer = Cap0(state->scroll_timer - (F32)ui->frame_delta_time);
+  Assert(state != 0);
   ui_line_input_update_state(ui, state);
   return(state);
 }
@@ -691,7 +689,7 @@ ui_v3i_input(UI_Ctx *ui, String8 label, V3i *value, Range_V3i range, String8 fmt
     ui_sizing_x(ui, ui_grow())
     {
       String8 fmt_arr[] = { fmt1, fmt2, fmt3 };
-      for(U32Each(idx, 3))
+      for(EachU32(idx, 3))
       {
         I32 *v = (value->c + idx);
         Range_I32 rng = rng_i32(range.min.c[idx], range.max.c[idx]);

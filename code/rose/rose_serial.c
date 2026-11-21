@@ -388,7 +388,7 @@ srl_project_from_str(Arena *arena, String8 str)
             {
               U32 value = 0;
               String8 hex = kv.value_start->str8;
-              for(U32Each(idx, hex.size))
+              for(EachU32(idx, hex.size))
               {
                 value *= 16;
                 U8 c = hex.value[idx];

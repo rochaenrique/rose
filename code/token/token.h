@@ -14,6 +14,8 @@ typedef enum Token_Kind
   TokenKind_ParenClose,
   TokenKind_ScopeOpen,
   TokenKind_ScopeClose,
+  TokenKind_BracketOpen,
+  TokenKind_BracketClose,
   TokenKind_COUNT,
 } Token_Kind;
 
@@ -34,6 +36,7 @@ struct Token_List
   Token *last;
   U32 count;
 };
+raddbg_type_view(Token_List, list($.first, $.next));
 
 typedef struct Token_Iterator Token_Iterator;
 struct Token_Iterator

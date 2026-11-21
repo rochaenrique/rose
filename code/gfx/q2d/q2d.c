@@ -47,7 +47,7 @@ Index_U32
 get_texture_idx(Q2D_Batch *batch, Q2D_Texture texture_id)
 {
   Index_U32 result = {0};
-  for (U32Each(texture_idx, batch->texture_count))
+  for (EachU32(texture_idx, batch->texture_count))
   {
     if (texture_id == batch->textures[texture_idx])
     {

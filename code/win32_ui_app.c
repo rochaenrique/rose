@@ -8,7 +8,8 @@
 
 #include "ui/ui.h"
 #include "token/token.h"
-#include "expr/expr.h"
+#include "ast/ast.h"   // NOTE(erb): new
+#include "ir/ir.h"     // NOTE(erb): new
 #include "rose/rose.h"
 
 // NOTE(erb): implementation
@@ -20,7 +21,8 @@
 
 #include "ui/ui.c"
 #include "token/token.c"
-#include "expr/expr.c"
+#include "ast/ast.c"   // NOTE(erb): new
+#include "ir/ir.c"     // NOTE(erb): new
 #include "rose/rose.c"
 
 void
@@ -144,7 +146,7 @@ save_state(App_State *app_state)
                     event->end.date.day, event->end.date.month, event->end.date.year,
                     event->end.time.hour, event->end.time.minute);
       
-      for(U32Each(idx, event->tag_count))
+      for(EachU32(idx, event->tag_count))
       {
         str8_builderf(scratch.arena, &sb, "   tag: %llu\n", event->tags[idx]);
       }
@@ -176,6 +178,55 @@ save_state(App_State *app_state)
   }
 }
 
+typedef enum ROSE_Meta_Type_Kind
+{
+  ROSEMetaTypeKind_U32,
+  ROSEMetaTypeKind_B32,
+  ROSEMetaTypeKind_Calendar_Date,
+  ROSEMetaTypeKind_COUNT,
+} ROSE_Meta_Type_Kind;
+
+typedef struct ROSE_Meta_Field ROSE_Meta_Field;
+struct ROSE_Meta_Field
+{
+  String8 name;
+  U32 byte_offset;
+  ROSE_Meta_Type_Kind type_kind;
+};
+
+#define ROSE_META_UI_RULE_FIELD_NAME _ui_rule_
+String8 rose_meta_ui_rule_field_name_str8 = S8Lit(StringifyAfter(ROSE_META_UI_RULE_FIELD_NAME));
+
+#define ROSEMetaViewStructFieldsName(Struct_Name) Struct_Name##_rose_meta_fields
+
+#define ROSEMetaField(Struct_Name, field_name, _type_kind) {  \
+.byte_offset = offsetof(Struct_Name, field_name), \
+.name = S8Lit(Stringify(field_name)),  \
+.type_kind = _type_kind }
+
+#define ROSE_META_VIEW_STRUCT_DEFINE3(Struct_Name, Type1, field_name1, type_kind1, Type2, field_name2, type_kind2, Type3, field_name3, type_kind3) \
+typedef struct Struct_Name Struct_Name; \
+struct Struct_Name \
+{ \
+ROSE_UI_Rule ROSE_META_UI_RULE_FIELD_NAME; \
+Type1 field_name1; \
+Type2 field_name2; \
+Type3 field_name3; \
+}; \
+ROSE_Meta_Field ROSEMetaViewStructFieldsName(Struct_Name)[] = \
+{ \
+ROSEMetaField(Struct_Name, ROSE_META_UI_RULE_FIELD_NAME, ROSEMetaTypeKind_U32), \
+ROSEMetaField(Struct_Name, field_name1, type_kind1), \
+ROSEMetaField(Struct_Name, field_name2, type_kind2), \
+ROSEMetaField(Struct_Name, field_name3, type_kind3), \
+}; \
+StaticAssert(offsetof(Struct_Name, ROSE_META_UI_RULE_FIELD_NAME) == 0, Struct_Name##_has_ui_rule_at_offset0);
+
+ROSE_META_VIEW_STRUCT_DEFINE3(ROSE_Calendar_View,
+                              Calendar_Date, calendar_start , ROSEMetaTypeKind_Calendar_Date,
+                              U32          , calendar_grid_x, ROSEMetaTypeKind_U32,
+                              U32          , calendar_grid_y, ROSEMetaTypeKind_U32)
+
 void
 ui_calendar(UI_Ctx *ui, Calendar_Date start_date, V2i grid_size, Range_V2f space, Event_List *event_list)
 {
@@ -185,10 +236,10 @@ ui_calendar(UI_Ctx *ui, Calendar_Date start_date, V2i grid_size, Range_V2f space
   I32 color_space = (grid_size.y + grid_size.x);
   V2f cell_size = v2f_hada_div(space_size, v2fi(grid_size));
   V2f cell_cursor = space.min;
-  for(U32Each(y, (U32)grid_size.y))
+  for(EachU32(y, (U32)grid_size.y))
   {
     cell_cursor.x = space.min.x;
-    for(U32Each(x, (U32)grid_size.x))
+    for(EachU32(x, (U32)grid_size.x))
     {
       F32 t = (F32)(x+y)/color_space;
       V4f color = v4f_lerp(color_red, color_blue, t);
@@ -275,55 +326,47 @@ ui_calendar(UI_Ctx *ui, Calendar_Date start_date, V2i grid_size, Range_V2f space
 }
 
 void
-calendar_panel(App_State *app_state, View_ID id)
+ui_calendar_view(App_State *app_state, Buffer *memory, E_Value *value)
 {
-  Assert(view_id_is_valid(id));
-  View *view = view_from_id(app_state, id);
-  Assert(view);
-  Assert(view->kind == ViewKind_Calendar);
+  Assert(ir_type_id_equals(app_state->ir_type_id__calendar_view, value->type));
   
-  if(!view->is_initialized)
-  {
-    view->is_initialized = true;
-    view->calendar_start = os_get_local_date_time().date;
-    view->calendar_grid_size = v2i(1, 5);
-  }
+  ROSE_Calendar_View *cal_view = EValueGetPtr(memory, value, ROSE_Calendar_View);
+  Calendar_Date *calendar_start = &cal_view->calendar_start;
+  U32 *calendar_grid_x = &cal_view->calendar_grid_x;
+  U32 *calendar_grid_y = &cal_view->calendar_grid_y;
   
   UI_Ctx *ui = &app_state->ui;
   
   Scratch scratch = scratch_begin(0, 0);
   
-  ui_sizing(ui, ui_grow(), ui_grow())
-    ui_padding(ui, pad2_equal(0))
-    ui_background_color(ui, color_magenta)
-    ui_seed_key(ui, ui_key_make(hash_from_view_id(id)))
+  ui_set_next_sizing(ui, ui_grow(), ui_fixed(200.0f));
+  ui_set_next_padding(ui, pad2_equal(0));
+  ui_set_next_background_color(ui, color_magenta);
+  UI_Node *calendar_panel = ui_nodef(ui, UIFlags_DrawBackGround|UIFlags_Comm, S8("calendar_panel"));
+  ui_parent(ui, calendar_panel)
   {
-    // NOTE(erb): this only allows one panel, this should have seed by the panel Id or something
-    UI_Node *calendar_panel = ui_nodef(ui, UIFlags_DrawBackGround|UIFlags_Comm, S8("calendar_%uul"), id);
-    ui_parent(ui, calendar_panel)
+    UI_Comm out = ui_comm_from_node(ui, calendar_panel);
+    if(out.node != 0)
     {
-      UI_Comm out = ui_comm_from_node(ui, calendar_panel);
-      if(out.node != 0)
+      F32 scroll_k = 0.01f;
+      if(key_down(ui, GFXKey_Control)) // NOTE(erb): scroll x when ctrl pressed
       {
-        F32 scroll_k = 0.01f;
-        if(key_down(ui, GFXKey_Control)) // NOTE(erb): scroll x when ctrl pressed
-        {
-          out.scroll.x = out.scroll.y;
-          out.scroll.y = 0;
-        }
-        
-        V2i scroll_size_delta = v2f_floor_to_v2i(v2f_scale(out.scroll, scroll_k));
-        view->calendar_grid_size.x = Cap(view->calendar_grid_size.x + scroll_size_delta.x, 1, 7);
-        view->calendar_grid_size.y = Cap(view->calendar_grid_size.y + scroll_size_delta.y, 1, 10);
-        
-        Range_V2f inner = ui_node_rng_v2f_inner(out.node);
-        ui_calendar(ui, view->calendar_start, view->calendar_grid_size, inner, &app_state->event_list);
+        out.scroll.x = out.scroll.y;
+        out.scroll.y = 0;
       }
+      
+      V2i scroll_size_delta = v2f_floor_to_v2i(v2f_scale(out.scroll, scroll_k));
+      *calendar_grid_x = Cap(*calendar_grid_x + scroll_size_delta.x, 1, 7);
+      *calendar_grid_y = Cap(*calendar_grid_y + scroll_size_delta.y, 1, 10);
+      
+      Range_V2f inner = ui_node_rng_v2f_inner(out.node);
+      ui_calendar(ui, *calendar_start, v2i(*calendar_grid_x, *calendar_grid_y), inner, &app_state->event_list);
     }
   }
   
   scratch_end(&scratch);
 }
+
 
 typedef struct Table_Layout Table_Layout;
 struct Table_Layout
@@ -357,585 +400,6 @@ table_cell_end(Table_Layout *layout, V2f cell_size)
   layout->cursor.x += cell_size.x;
   layout->max_row_height = Max(layout->max_row_height, cell_size.y);
 }
-
-typedef enum Expr_Cmd_Kind
-{
-  ExprCmdKind_Primary,
-  ExprCmdKind_BinaryBegin,
-  ExprCmdKind_BinaryOp,
-  ExprCmdKind_BinaryEnd,
-  ExprCmdKind_FunctionBegin,
-  ExprCmdKind_FunctionEnd,
-} Expr_Cmd_Kind;
-
-typedef struct Expr_Cmd Expr_Cmd;
-struct Expr_Cmd
-{
-  Expr_Cmd_Kind kind;
-  Expr *expr;
-  Expr_Cmd *next;
-};
-
-typedef struct Expr_Cmd_List Expr_Cmd_List;
-struct Expr_Cmd_List
-{
-  Expr_Cmd *first;
-  Expr_Cmd *last;
-  U32 count;
-};
-
-Expr_Cmd *
-expr_append_cmd(Arena *arena, Expr_Cmd_List *list, Expr *expr, Expr_Cmd_Kind kind)
-{
-  Expr_Cmd *cmd = PushStruct(arena, Expr_Cmd);
-  SLLQueueAppend(list->first, list->last, cmd);
-  cmd->kind = kind;
-  cmd->expr = expr;
-  list->count += 1;
-  return(cmd);
-}
-
-void
-expr_append_cmd_from_expr(Arena *arena, Expr_Cmd_List *list, Expr *node)
-{
-  if(node != 0)
-  {
-    switch(node->kind)
-    {
-      case ExprKind_Primary:
-      {
-        expr_append_cmd(arena, list, node, ExprCmdKind_Primary);
-      } break;
-      
-      case ExprKind_Binary:
-      {
-        expr_append_cmd(arena, list, node, ExprCmdKind_BinaryBegin);
-        {
-          expr_append_cmd_from_expr(arena, list, node->bin.left);
-          expr_append_cmd(arena, list, node, ExprCmdKind_BinaryOp);
-          expr_append_cmd_from_expr(arena, list, node->bin.right);
-        }
-        expr_append_cmd(arena, list, node, ExprCmdKind_BinaryEnd);
-      } break;
-      
-      case ExprKind_Function:
-      {
-        expr_append_cmd(arena, list, node, ExprCmdKind_FunctionBegin);
-        for(EachNode(Expr, child, node->func.args.first))
-        {
-          expr_append_cmd_from_expr(arena, list, child);
-        }
-        expr_append_cmd(arena, list, node, ExprCmdKind_FunctionEnd);
-      } break;
-      
-      InvalidDefaultCase;
-    }
-  }
-}
-
-
-Expr_Cmd_List
-expr_cmd_list_from_expr(Arena *arena, Expr *node)
-{
-  Expr_Cmd_List result = {0};
-  expr_append_cmd_from_expr(arena, &result, node);
-  return(result);
-}
-
-Fancy_String8_List
-push_fancy_strs_from_expr_cmd_list(Arena *arena, Expr_Cmd_List *cmd_list)
-{
-  Fancy_String8_List result = {0};
-  
-  for(EachNode(Expr_Cmd, cmd, cmd_list->first))
-  {
-    Expr *expr = cmd->expr;
-    Assert(expr != 0);
-    switch(cmd->kind)
-    {
-      case ExprCmdKind_Primary:
-      {
-        String8 str = {0};
-        V4f color = {0};
-        switch(cmd->expr->prim.kind)
-        {
-          case ExprPrimaryKind_Identifier: 
-          {
-            color = color_blue; 
-            str = expr->prim.str8;
-          } break;
-          
-          case ExprPrimaryKind_NumLiteral: 
-          {
-            color = color_green; 
-            str = push_str8f(arena, "%u", expr->prim.u32);
-          } break;
-          
-          case ExprPrimaryKind_StrLiteral: 
-          {
-            color = v4f(0.1f, 0.5f, 0.1f, 1.0f); 
-            str = push_str8f(arena, "`%S`", expr->prim.str8);
-          } break;
-          
-          InvalidDefaultCase;
-        }
-        fancy_str8_push(arena, &result, str, color);
-      } break;
-      
-      case ExprCmdKind_BinaryOp:
-      {
-        String8 str = {0};
-        switch(expr->bin.kind)
-        {
-          case ExprBinaryKind_Sum: str = S8("+"); break;
-          case ExprBinaryKind_Mul: str = S8("*"); break;
-          case ExprBinaryKind_Sub: str = S8("-"); break;
-          case ExprBinaryKind_Div: str = S8("/"); break;
-          case ExprBinaryKind_Mod: str = S8("%"); break;
-          
-          case ExprBinaryKind_Eq: str = S8("=="); break;
-          case ExprBinaryKind_Gt: str = S8(">");  break;
-          case ExprBinaryKind_Ge: str = S8(">="); break;
-          case ExprBinaryKind_Lt: str = S8("<");  break;
-          case ExprBinaryKind_Le: str = S8("<="); break;
-          
-          case ExprBinaryKind_BitAnd  : str = S8("&");  break;
-          case ExprBinaryKind_BitOr   : str = S8("|");  break;
-          case ExprBinaryKind_LogicAnd: str = S8("&&"); break;
-          case ExprBinaryKind_LogicOr : str = S8("||"); break;
-          case ExprBinaryKind_Access  : str = S8(".");  break;
-          
-          InvalidDefaultCase;
-        }
-        fancy_str8_push(arena, &result, str, color_red);
-      } break;
-      
-      case ExprCmdKind_BinaryBegin:
-      {
-        fancy_str8_push(arena, &result, S8("("), color_white);
-      } break;
-      
-      case ExprCmdKind_FunctionBegin:
-      {
-        fancy_str8_push(arena, &result, expr->func.name, color_blue);
-        fancy_str8_push(arena, &result, S8("("), color_white);
-      } break;
-      
-      case ExprCmdKind_BinaryEnd:
-      case ExprCmdKind_FunctionEnd:
-      {
-        fancy_str8_push(arena, &result, S8(")"), color_white);
-      } break;
-      
-      InvalidDefaultCase;
-    }
-  }
-  return(result);
-}
-
-void
-cell_init_from_expr_value_leaf(Arena *arena, UI_Cell *cell, Expr_Value *value)
-{
-  Assert(cell != 0);
-  
-  cell->data = (void *)value;
-  switch(value->type)
-  {
-    case ExprType_B32:
-    {
-      cell->label = (value->b32 ? S8("true") : S8("false"));
-    } break;
-    
-    case ExprType_U32: 
-    {
-      cell->label = push_str8f(arena, "%u", value->u32);
-    } break;
-    
-    case ExprType_Str8: 
-    {
-      cell->label = value->str8;
-    } break;
-    
-    case ExprType_DateTime: 
-    {
-      cell->flags = UICellFlags_FancyStrLabel;
-      fancy_str8_push(arena, &cell->label_fancy_str, 
-                      push_str8f(arena, "%02u/%02u/%02u - %02u:%02u:%02u", 
-                                 value->dt.date.day, value->dt.date.month, value->dt.date.year, 
-                                 value->dt.time.hour, value->dt.time.minute, value->dt.time.second),
-                      color_yellow);
-    } break;
-    
-    case ExprType_Event:
-    {
-      Scratch scratch = scratch_begin(&arena, 1);
-      
-      Assert(value->event != 0);
-      Calendar_Date start = value->event->start.date;
-      Calendar_Date end = value->event->end.date;
-      String8 title = str8_from_name_chunk_list(arena, &value->event->title_chunk_list);
-      
-      cell->flags = UICellFlags_FancyStrLabel;
-      fancy_str8_push(arena, &cell->label_fancy_str, push_str8f(arena, "#%u ", value->event->id), color_yellow);
-      fancy_str8_push(arena, &cell->label_fancy_str, title, color_white);
-      fancy_str8_push(arena, &cell->label_fancy_str, push_str8f(arena, " %02u/%02u/%u", start.day, start.month, start.year), color_blue);
-      fancy_str8_push(arena, &cell->label_fancy_str, S8(" - "), color_white);
-      fancy_str8_push(arena, &cell->label_fancy_str, push_str8f(arena, "%02u/%02u/%u", end.day, end.month, end.year), v4f(0.2f, 0.2f, 0.8f, 1.0f));
-      
-      cell->filter_needle = title;
-      
-      scratch_end(&scratch);
-    } break;
-    
-    case ExprType_List:
-    {
-      String8 expr_type_str_table[] = 
-      {
-        [ExprType_None    ] = S8Lit("?"),
-        [ExprType_B32     ] = S8Lit("b32"),
-        [ExprType_U32     ] = S8Lit("u32"),
-        [ExprType_Str8    ] = S8Lit("str8"),
-        [ExprType_DateTime] = S8Lit("datetime"),
-        [ExprType_Event   ] = S8Lit("event"),
-        [ExprType_List    ] = S8Lit("list"),
-      };
-      Assert(ArraySize(expr_type_str_table) == ExprType_COUNT);
-      String8 sub_type_str = expr_type_str_table[value->sub_type];
-      
-      cell->flags = UICellFlags_FancyStrLabel;
-      fancy_str8_push(arena, &cell->label_fancy_str, S8("list<"), color_white);
-      fancy_str8_push(arena, &cell->label_fancy_str, sub_type_str, color_blue);
-      fancy_str8_push(arena, &cell->label_fancy_str, S8(">["), color_white);
-      fancy_str8_push(arena, &cell->label_fancy_str, push_str8f(arena, "%d", value->list.count), color_green);
-      fancy_str8_push(arena, &cell->label_fancy_str, S8("]"), color_white);
-    } break;
-  }
-}
-
-void
-cell_arr_append_from_expr_value_recur(Arena *arena, UI_Cell *cell_arr, U32 *cell_count, U32 cell_capacity, 
-                                      Expr_Value *value)
-{
-  if(*cell_count + 1 <= cell_capacity)
-  {
-    UI_Cell *heading_cell = (cell_arr + (*cell_count)++);
-    cell_init_from_expr_value_leaf(arena, heading_cell, value);
-    if(value->type == ExprType_List)
-    {
-      for(EachNode(Expr_Value, v, value->list.first))
-      {
-        cell_arr_append_from_expr_value_recur(arena, cell_arr, cell_count, cell_capacity, v);
-      }
-    }
-  }
-}
-
-U32 
-expr_value_total_node_count_rec(Expr_Value *value)
-{
-  U32 result = 1;
-  if(value->type == ExprType_List)
-  {
-    for(EachNode(Expr_Value, v, value->list.first))
-    {
-      result += expr_value_total_node_count_rec(v);
-    }
-  }
-  return(result);
-}
-
-Expr_Variable *
-expr_env_push_var(Expr_Environment *env, Arena *arena)
-{
-  Expr_Variable *result = PushStruct(arena, Expr_Variable);
-  SLLStackPush(env->first_var, result);
-  return(result);
-}
-
-Expr_Variable *
-expr_env_append_var_value(Expr_Environment *env, Arena *arena, String8 iden, Expr_Value value)
-{
-  Expr_Variable *var = expr_env_push_var(env, arena);
-  var->iden = iden;
-  var->is_func = false;
-  var->value = value;
-  return(var);
-}
-
-Expr_Variable *
-expr_env_append_var_func(Expr_Environment *env, Arena *arena, String8 iden, Expr_Function_Impl_Func *func)
-{
-  Expr_Variable *var = expr_env_push_var(env, arena);
-  var->iden = iden;
-  var->is_func = true;
-  var->only_expr_args = false;
-  var->func = func;
-  return(var);
-}
-
-
-Expr_Variable *
-expr_env_append_var_expr_func(Expr_Environment *env, Arena *arena, String8 iden, Expr_Function_Impl_Func *func)
-{
-  Expr_Variable *var = expr_env_append_var_func(env, arena, iden, func);
-  var->only_expr_args = true;
-  return(var);
-}
-
-EXPR_FUNCTION_IMPL_FUNC(app_get_events_expr) // Arena *arena, Expr_Environment *env, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
-{
-  Assert(env->data != 0);
-  
-  App_State *app_state = (App_State *)env->data;
-  
-  Expr_Value_List list = {0};
-  for(EachNode(Event, event, app_state->event_list.first))
-  {
-    Expr_Value *v = expr_value_list_push(arena, &list);
-    v->type = ExprType_Event;
-    v->event = event;
-  }
-  
-  Expr_Func_Impl_Result result = {0};
-  result.value.list = list;
-  result.value.sub_type = ExprType_Event;
-  result.value.type = ExprType_List;
-  return(result);
-}
-
-EXPR_FUNCTION_IMPL_FUNC(app_get_event_from_id_expr) // Arena *arena, Expr_Environment *env, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
-{
-  Assert(env->data != 0);
-  
-  String8 error = {0};
-  if(arg_values->count != 1)
-  {
-    error = S8("expected one argument");
-  }
-  
-  
-  // TODO(erb): use computed value of the arguments!!!!!!
-  Event_ID id = {0};
-  if(error.value == 0)
-  {
-    Expr_Value *arg = arg_values->first;
-    Assert(arg != 0);
-    
-    if(arg->type == ExprType_U32)
-    {
-      id = event_id_make(arg->u32);
-    }
-    else
-    {
-      error = S8("expected a number literal argument");
-    }
-  }
-  
-  App_State *app_state = (App_State *)env->data;
-  
-  Event *event = 0;
-  if(error.value == 0)
-  {
-    for(EachNode(Event, test, app_state->event_list.first))
-    {
-      if(event_id_equals(test->id, id))
-      {
-        event = test;
-        break;
-      }
-    }
-  }
-  
-  Expr_Func_Impl_Result result = {0};
-  result.error = error;
-  if(error.value == 0)
-  {
-    if(event != 0)
-    {
-      result.value.type = ExprType_Event;
-      result.value.event = event;
-    }
-    else
-    {
-      result.error = S8("no event with id");
-    }
-  }
-  return(result);
-}
-
-
-EXPR_FUNCTION_IMPL_FUNC(app_get_tags_expr) // Arena *arena, Expr_Environment *env, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
-{
-  Assert(env->data != 0);
-  
-  App_State *app_state = (App_State *)env->data;
-  
-  Expr_Value_List list = {0};
-  for(EachElement(Event_Tag, tag, app_state->tags))
-  {
-    if(tag->used)
-    {
-      Expr_Value *v = expr_value_list_push(arena, &list);
-      v->type = ExprType_Str8;
-      v->str8 = S8Struct(tag->name, tag->name_size);
-    }
-  }
-  
-  Expr_Func_Impl_Result result = {0};
-  result.value.list = list;
-  result.value.sub_type = ExprType_Str8;
-  result.value.type = ExprType_List;
-  return(result);
-}
-
-EXPR_FUNCTION_IMPL_FUNC(app_ui_rule_calendar) // Arena *arena, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
-{
-  Expr_Func_Impl_Result result = {0};
-  
-  Assert(arg_values != 0);
-  if(result.error.value == 0 && 
-     arg_values->count != 1)
-  {
-    result.error = S8("expected one argument");
-  }
-  
-  Expr_Value *arg = 0;
-  if(result.error.value == 0)
-  {
-    arg = arg_values->first;
-    Assert(arg != 0);
-    if(!(arg->type == ExprType_List && 
-         arg->sub_type == ExprType_DateTime))
-    {
-      result.error = S8("expected a date time list");
-    }
-  }
-  
-  if(result.error.value == 0)
-  {
-    result.value = *arg;
-    result.value.ui_rule = ExprUIRule_Calendar;
-  }
-  return(result);
-}
-
-EXPR_FUNCTION_IMPL_FUNC(app_ui_rule_raw) // Arena *arena, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
-{
-  Expr_Func_Impl_Result result = {0};
-  
-  Assert(arg_values != 0);
-  if(result.error.value == 0 && 
-     arg_values->count != 1)
-  {
-    result.error = S8("expected a single argument");
-  }
-  
-  Expr_Value *arg = 0;
-  if(result.error.value == 0)
-  {
-    arg = arg_values->first;
-    Assert(arg != 0);
-    if(arg->ui_rule != ExprUIRule_None)
-    {
-      result.error = S8("allready decorated?");
-      InvalidCodePath;
-    }
-  }
-  if(result.error.value == 0)
-  {
-    result.value = *arg;
-    result.value.ui_rule = ExprUIRule_Raw;
-  }
-  return(result);
-}
-
-EXPR_FUNCTION_IMPL_FUNC(app_ui_rule_focus) // Arena *arena, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
-{
-  Expr_Func_Impl_Result result = {0};
-  
-  Assert(arg_values != 0);
-  if(arg_values->count != 1)
-  {
-    result.error = S8("expected one argument");
-  }
-  
-  Expr_Value *arg = 0;
-  if(result.error.value == 0)
-  {
-    arg = arg_values->first;
-    Assert(arg != 0);
-    if(arg->type != ExprType_Event)
-    {
-      result.error = S8("expected a date time list");
-    }
-  }
-  
-  if(result.error.value == 0)
-  {
-    result.value = *arg;
-    result.value.ui_rule = ExprUIRule_FocusEvent;
-  }
-  return(result);
-}
-
-EXPR_FUNCTION_IMPL_FUNC(app_expand_arg_columns_ui_rule) // Arena *arena, Expr_Environment *env, Expr_Value_List *arg_values, Expr_List *arg_exprs, void *data
-{
-  Scratch scratch = scratch_begin(&arena, 1);
-  
-  String8 error = {0};
-  
-  Assert(arg_exprs != 0);
-  if(arg_exprs->count < 2)
-  {
-    error = S8("expected at least two arguments");
-  }
-  
-  // NOTE(erb): first arg as an expression and evaluate it
-  Expr_Value first_arg_value = {0};
-  if(error.value == 0)
-  {
-    Expr *head_expr = arg_exprs->first;
-    Assert(head_expr != 0);
-    first_arg_value = expr_value_from_expr_with_environment(scratch.arena, head_expr, env, &error);
-  }
-  
-  Expr_Value_List table = {0};
-  if(error.value == 0)
-  {
-    Expr_List column_args = {0};
-    column_args.first = arg_exprs->first->next;
-    column_args.last = arg_exprs->last;
-    Assert(column_args.first != 0 && column_args.last != 0);
-    
-    Expr_Value *first_context_value = (first_arg_value.type == ExprType_List ? 
-                                       first_arg_value.list.first : 
-                                       &first_arg_value);
-    
-    for(EachNode(Expr_Value, context_value, first_context_value))
-    {
-      Expr_Environment context_env = {0};
-      expr_env_append_var_value(&context_env, scratch.arena, S8("$"), *context_value);
-      
-      Expr_Value_List row_eval = expr_value_list_from_expr_list(arena, &context_env, &column_args, &error);
-      
-      Expr_Value *store = expr_value_list_push(arena, &table);
-      store->list = row_eval;
-      store->type = ExprType_List;
-    }
-  }
-  
-  Expr_Func_Impl_Result result = {0};
-  result.error = error;
-  if(error.value == 0)
-  {
-    result.value.list = table;
-    result.value.type = ExprType_List;
-    result.value.ui_rule = ExprUIRule_Columns;
-  }
-  scratch_end(&scratch);
-  return(result);
-}
-
 
 Tag_ID 
 create_event_tag(App_State *app_state, String8 name, V4f color)
@@ -1002,7 +466,7 @@ ui_focus_event(UI_Ctx *ui, App_State *app_state, Event *event, B32 *is_color_pic
       ui_set_next_sizing(ui, ui_grow(), ui_fit());
       ui_parentf(ui, 0, S8Z())
       {
-        for(U32Each(idx, event->tag_count))
+        for(EachU32(idx, event->tag_count))
         {
           Event_Tag *tag = event_tag_from_id(app_state, event->tags[idx]);
           ui_set_next_font_color(ui, tag->color);
@@ -1100,447 +564,866 @@ ui_focus_event(UI_Ctx *ui, App_State *app_state, Event *event, B32 *is_color_pic
   scratch_end(&scratch);
 }
 
-Expr *
-ui_create_new_expr_popup_trigger(UI_Ctx *ui, Arena *arena, UI_Key *creating_key, UI_Key key, String8 label)
+AST_Node *
+ast_from_text(Arena *arena, String8 text, String8 *error)
 {
-  Expr *result = 0;
+  Scratch scratch = scratch_begin(&arena, 1);
+  Token_List tokens = token_list_from_str(scratch.arena, text, error);
   
-  UI_Key lister_key = ui_keyf("new_expr_lister_%ull", ui_hash_from_key(key));
-  ui_seed_key(ui, key)
+  AST_Node *ast = 0;
+  if(error->value == 0)
   {
+    ast = ast_from_token_list(arena, &tokens, error);
+  }
+  scratch_end(&scratch);
+  return(ast);
+}
+
+E_Value_Interp
+e_value_from_text(Arena *arena, String8 text, IR_Type_Table *type_table, 
+                  E_Global_Iden *top_global_iden, IR_Symbol_Type *top_symbol_type, 
+                  String8 *error)
+{
+  Scratch scratch = scratch_begin(&arena, 1);
+  AST_Node *ast = ast_from_text(scratch.arena, text, error);
+  
+  IR_Op_List op_list = {0}; 
+  if(error->value == 0)
+  {
+    op_list = ir_op_list_from_ast(scratch.arena, ast, type_table, top_symbol_type, error);
+  }
+  
+  E_Value_Interp result = {0}; 
+  if(error->value == 0)
+  {
+    result = e_interp_from_ir_ops(arena, &op_list, type_table, top_global_iden);
+  }
+  scratch_end(&scratch);
+  return(result);
+}
+
+void
+fancy_str8_list_from_ir_type_recur(Arena *arena, Fancy_String8_List *fstr, IR_Type *type, 
+                                   IR_Type_Table *type_table, U32 depth, U32 max_depth)
+{
+  if(depth+1 >= max_depth)
+  {
+    fancy_str8_push(arena, fstr, S8("T"), color_red);
+  }
+  else switch(type->kind)
+  {
+    case IRTypeKind_U32: fancy_str8_push(arena, fstr, S8("U32"), color_cyan); break;
+    case IRTypeKind_B32: fancy_str8_push(arena, fstr, S8("B32"), color_cyan); break;
+    case IRTypeKind_U8 : fancy_str8_push(arena, fstr, S8("U8" ), color_cyan); break;
     
-    // NOTE(erb): create new default
-    ui_set_next_font_size(ui, 18.0f);
-    ui_set_next_border_color(ui, color_blank);
-    ui_set_next_corner_radius(ui, ui_rad(.35f, UIRadiusKind_PercentOfY));
-    ui_set_next_padding(ui, pad2_xy(2.0f, 0));
-    ui_set_next_background_color(ui, v4f(.3f, .3f, .3f, .7f));
-    UI_Comm new_expr_btn_comm = ui_buttonf(ui, S8("%S"), label);
-    if(new_expr_btn_comm.left_clicked)
+    case IRTypeKind_AddressOf:
     {
-      Assert(ui_key_is_null(*creating_key));
-      *creating_key = key;
-    }
-    if(ui_key_equals(*creating_key, key))
+      fancy_str8_list_from_ir_type_recur(arena, fstr, 
+                                         ir_type_from_id(type_table, type->sub_type), 
+                                         type_table, depth+1, max_depth);
+      fancy_str8_push(arena, fstr, S8(" *"), color_white);
+    } break;
+    
+    case IRTypeKind_Function:
     {
-#define EX(k, l, d) (UI_Cell){ .data = (void *)(U64)(ExprKind_##k), .label = S8Lit(l), .sub_label = S8Lit(d), \
-.flags = UICellFlags_Clickable|UICellFlags_DrawSubLabel }
-      UI_Cell cell_arr[] = 
+      fancy_str8_list_from_ir_type_recur(arena, fstr, 
+                                         ir_type_from_id(type_table, type->sub_type), 
+                                         type_table, depth+1, max_depth);
+      fancy_str8_push(arena, fstr, S8("(*)("), color_white);
+      for(EachU32(idx, type->field_count))
       {
-        EX(Primary  , "Primary", "identifier, number or string"),
-        EX(Binary   , "Binary" , "oparation with two operands"),
-        EX(Function , "Func"   , "function with arguments"),
-      };
-#undef EX
-      Assert(new_expr_btn_comm.node != 0);
-      Range_V2f rng = ui_node_rng_v2f(new_expr_btn_comm.node);
-      V2f lister_top_left = v2f(rng.min.x, rng.max.y);
-      UI_Lister_Popup_Result popup_lister = ui_cell_lister_filtered_floating_popup(ui, lister_top_left, lister_key,
-                                                                                   cell_arr, ArraySize(cell_arr), 
-                                                                                   S8("expr"));
-      
-      if(popup_lister.canceled)
-      {
-        *creating_key = ui_key_null();
-      }
-      if(popup_lister.lister.selected != 0)
-      {
-        *creating_key = ui_key_null();
-        
-        Expr_Kind kind = (Expr_Kind)(U64)popup_lister.lister.selected->data;
-        Assert(kind != ExprKind_None);
-        
-        Expr *expr = PushStruct(arena, Expr);
-        expr->kind = kind;
-        switch(expr->kind)
+        IR_Field_Type *field = (type->fields + idx);
+        fancy_str8_list_from_ir_type_recur(arena, fstr, 
+                                           ir_type_from_id(type_table, field->type), 
+                                           type_table, depth+1, max_depth);
+        if(idx+1 < type->field_count)
         {
-          case ExprKind_Binary:
-          {
-            expr->bin.kind = ExprBinaryKind_Sum;
-            
-            expr->bin.left = PushStruct(arena, Expr);
-            expr->bin.left->kind = ExprKind_Primary;
-            expr->bin.left->prim.kind = ExprPrimaryKind_NumLiteral;
-            expr->bin.left->prim.u32 = 69;
-            
-            expr->bin.right = PushStruct(arena, Expr);
-            expr->bin.right->kind = ExprKind_Primary;
-            expr->bin.right->prim.kind = ExprPrimaryKind_NumLiteral;
-            expr->bin.right->prim.u32 = 420;
-          } break;
-          
-          case ExprKind_Primary:
-          {
-            expr->prim.kind = ExprPrimaryKind_Identifier;
-            expr->prim.str8 = S8("NEW_PRIM");
-          } break;
-          
-          case ExprKind_Function:
-          {
-            expr->func.name = S8("NEW_FUNC");
-          } break;
-          
-          InvalidDefaultCase;
+          fancy_str8_push(arena, fstr, S8(", "), color_white);
         }
-        result = expr;
       }
+      fancy_str8_push(arena, fstr, S8(")"), color_white);
+    } break;
+    
+    case IRTypeKind_Record:
+    {
+      if(type->is_array_record)
+      {
+        IR_Type_ID data_type = ir_array_data_type(type_table, type);
+        fancy_str8_list_from_ir_type_recur(arena, fstr, 
+                                           ir_type_from_id(type_table, data_type), 
+                                           type_table, depth+1, max_depth);
+        fancy_str8_push(arena, fstr, S8("[]"), color_white);
+      }
+      else
+      {
+        fancy_str8_push(arena, fstr, type->record_name, color_cyan);
+      }
+    } break;
+    
+    InvalidDefaultCase;
+  }
+}
+
+void
+fancy_str8_list_from_e_value_recur(Arena *arena, Fancy_String8_List *fstr, E_Value *value, 
+                                   Buffer *value_memory, IR_Type_Table *type_table, U32 depth, U32 max_depth)
+{
+  if(depth < max_depth)
+  {
+    IR_Type *type = ir_type_from_id(type_table, value->type);
+    Assert(type != 0);
+    
+    switch(type->kind)
+    {
+      case IRTypeKind_U32:
+      {
+        U32 u32 = *EValueGetPtr(value_memory, value, U32);
+        fancy_str8_push(arena, fstr, push_str8f(arena, "%d", u32), color_green);
+      } break;
+      
+      case IRTypeKind_B32:
+      {
+        B32 b32 = *EValueGetPtr(value_memory, value, B32);
+        fancy_str8_push(arena, fstr, (b32 ? S8("true") : S8("false")), color_green);
+      } break;
+      
+      case IRTypeKind_U8:
+      {
+        fancy_str8_push(arena, fstr, push_str8f(arena, "'%c'", *EValueGetPtr(value_memory, value, U8)), color_green); 
+      } break;
+      
+      case IRTypeKind_AddressOf:
+      {
+        U64 u64 = *EValueGetPtr(value_memory, value, U64);
+        fancy_str8_push(arena, fstr, S8("("), color_white);
+        fancy_str8_list_from_ir_type_recur(arena, fstr, type, type_table, depth, max_depth);
+        fancy_str8_push(arena, fstr, S8(")"), color_white);
+        fancy_str8_push(arena, fstr, push_str8f(arena, "%#x", u64), color_green);
+      } break;
+      
+      case IRTypeKind_Function:
+      {
+        fancy_str8_push(arena, fstr, S8("?"), color_cyan);
+        fancy_str8_list_from_ir_type_recur(arena, fstr, type, type_table, depth, max_depth);
+        fancy_str8_push(arena, fstr, S8("?"), color_cyan);
+      } break;
+      
+      case IRTypeKind_Record:
+      {
+        // NOTE(erb): special case str8
+        if(ir_type_id_equals(value->type, ir_builtin_type_id_str8)) 
+        {
+          IR_Array *array = e_array_from_value_cast_unchecked(value_memory, value);
+          String8 s = S8Struct(array->data, array->count);
+          fancy_str8_push(arena, fstr, S8("{"), color_white);
+          fancy_str8_push(arena, fstr, push_str8f(arena, "%d", array->count), color_green);
+          fancy_str8_push(arena, fstr, S8(", "), color_white);
+          fancy_str8_push(arena, fstr, push_str8f(arena, "\"%S\"", s), color_green);
+          fancy_str8_push(arena, fstr, S8("}"), color_white);
+        }
+        else if(type->is_array_record)
+        {
+          IR_Array *array = e_array_from_value_cast_unchecked(value_memory, value);
+          IR_Type *data_type = ir_type_from_id(type_table, ir_array_data_type(type_table, type));
+          Buffer array_memory = buffer_make(array->data, array->count * data_type->byte_count);
+          
+          fancy_str8_push(arena, fstr, S8("["), color_white);
+          for(EachU32(idx, array->count))
+          {
+            E_Value child = e_value_from_index_offset(data_type, idx);
+            fancy_str8_list_from_e_value_recur(arena, fstr, &child, &array_memory, type_table, depth+1, max_depth);
+            if(idx+1 < array->count)
+            {
+              fancy_str8_push(arena, fstr, S8(", "), color_white);
+            }
+          }
+          fancy_str8_push(arena, fstr, S8("]"), color_white);
+        }
+        else
+        {
+          fancy_str8_push(arena, fstr, S8("{"), color_white);
+          if(depth+1 < max_depth)
+          {
+            for(EachU32(idx, type->field_count))
+            {
+              IR_Field_Type *field = (type->fields + idx);
+              IR_Type *field_type = ir_type_from_id(type_table, field->type);
+              E_Value child = e_value_slice_as(value, field_type, field->byte_offset);
+              fancy_str8_list_from_e_value_recur(arena, fstr, &child, value_memory, type_table, depth+1, max_depth);
+              
+              if(idx+1 < type->field_count)
+              {
+                fancy_str8_push(arena, fstr, S8(", "), color_white);
+              }
+            }
+          }
+          fancy_str8_push(arena, fstr, S8("}"), color_white);
+        }
+      } break;
+    }
+  }
+}
+
+U32
+ast_depth_recur(AST_Node *ast)
+{
+  U32 result = 0;
+  if(ast != 0)
+  {
+    if(ast->kind == ASTKind_Binary)
+    {
+      result = Max(ast_depth_recur(ast->bin.left), ast_depth_recur(ast->bin.right));
+    }
+    else if(ast->kind == ASTKind_Function)
+    {
+      for(EachNode(AST_Node, arg, ast->func.args.first))
+      {
+        result = Max(result, ast_depth_recur(arg));
+      }
+      result += 1;
     }
   }
   return(result);
 }
 
-
-typedef enum Expr_Nest_Kind
+U32
+hash_from_watch_id(Eval_Watch_ID id)
 {
-  ExprNestKind_None,
-  ExprNestKind_Bin,
-  ExprNestKind_Func,
-} Expr_Nest_Kind;
+  U32 hash = (((id.parent+1) << 16) + (id.idx+1));
+  return(hash);
+}
 
-typedef struct Expr_Nest Expr_Nest;
-struct Expr_Nest
+B32
+watch_id_is_expanded(Watch_Expansion_State *state, Eval_Watch_ID id)
 {
-  Expr_Nest_Kind kind;
-  Expr_Nest *next;
-};
+  U32 hash = hash_from_watch_id(id);
+  Assert(is_power2_u32(ArraySize(state->slots)));
+  
+  Watch_Expansion *slot = state->slots[(hash & (ArraySize(state->slots)-1))];
+  B32 result = false;
+  for(EachNode(Watch_Expansion, exp, slot))
+  {
+    if(exp->id.parent == id.parent &&
+       exp->id.idx == id.idx)
+    {
+      result = true;
+      break;
+    }
+  }
+  return(result);
+}
+
+Eval_Watch_ID
+watch_id_make(U32 parent, U32 idx)
+{
+  Eval_Watch_ID result = {0};
+  result.parent = parent;
+  result.idx = idx;
+  return(result);
+}
+
+Eval_Block_Tree *
+push_block_tree(Arena *arena, String8 str, String8 error, Eval_Watch_ID id)
+{
+  Eval_Block_Tree *result = PushStruct(arena, Eval_Block_Tree);
+  result->str = str;
+  result->error = error;
+  result->id = id;
+  return(result);
+}
+
+Eval_Block_Tree *
+push_list_block_tree(Arena *arena, Eval_Block_Tree_List *list, String8 str, String8 error, Eval_Watch_ID id)
+{
+  Eval_Block_Tree *result = push_block_tree(arena, str, error, id);
+  SLLQueueAppend(list->first, list->last, result);
+  ++list->count;
+  return(result);
+}
+
+B32 
+ir_type_array_contains(IR_Type_ID *array, U32 array_count, IR_Type_ID type)
+{
+  B32 result = false;
+  for(EachPtr(IR_Type_ID, test, array, array_count))
+  {
+    if(ir_type_id_equals(type, *test))
+    {
+      result = true;
+      break;
+    }
+  }
+  return(result);
+}
+
+Eval_Block_Tree *
+push_block_tree_expanded(Arena *arena, String8 str, String8 error, Eval_Watch_ID id, 
+                         E_Value *value, Buffer *value_memory, IR_Type_Table *type_table, 
+                         IR_Type_ID *custom_exp_types, U32 custom_exp_count)
+{
+  Eval_Block_Tree *block = push_block_tree(arena, str, error, id);
+  block->value = *value;
+  block->value_memory = *value_memory;
+  
+  // NOTE(erb): leave it as is if we have a custom expansion
+  {
+    // NOTE(erb): default expansion for arrays and structs
+    IR_Type *type = ir_type_from_id(type_table, block->value.type);
+    if(type->kind == IRTypeKind_Record)
+    {
+      if(type->is_array_record)
+      {
+        IR_Array *array = e_array_from_value_cast_unchecked(&block->value_memory, &block->value);
+        block->expansion_size = array->count;
+      }
+      else
+      {
+        block->expansion_size = type->field_count;
+      }
+      
+#if 0
+      Eval_Watch_ID child_id = {.parent = hash_from_watch_id(id)};
+      for(EachU32(idx, block->expansion_size))
+      {
+        child_id.idx = idx;
+        push_block_tree_expansions_recur(arena, block, child_id, 
+                                         expansion_state, type_table, false, 
+                                         custom_exp_types, custom_exp_count);
+      }
+#endif
+    }
+  }
+  return(block);
+}
+
+// NOTE(erb): 'is_expansion_not_slice' is basically only for base case where the watch eval
+// turns into a node that isnt a slice, its just the thing
+void
+push_block_tree_expansions_recur(Arena *arena, Eval_Block_Tree *parent, Eval_Watch_ID id, 
+                                 Watch_Expansion_State *expansion_state, 
+                                 IR_Type_Table *type_table, B32 is_expansion_not_slice, 
+                                 IR_Type_ID *custom_exp_types, U32 custom_exp_count)
+{
+  if(watch_id_is_expanded(expansion_state, id))
+  {
+    Eval_Block_Tree *block = push_list_block_tree(arena, &parent->children, 
+                                                  parent->str, parent->error, id);
+    
+    if(is_expansion_not_slice) // TODO(erb): this might not be the best check
+    {
+      block->value = parent->value;
+      block->value_memory = parent->value_memory;
+    }
+    else
+    {
+      // NOTE(erb): index into parent
+      IR_Type *parent_type = ir_type_from_id(type_table, parent->value.type);
+      if(parent_type->kind == IRTypeKind_Record)
+      {
+        if(parent_type->is_array_record)
+        {
+          IR_Array *array = e_array_from_value_cast_unchecked(&parent->value_memory, &parent->value);
+          Assert(id.idx < array->count);
+          IR_Type *data_type = ir_type_from_id(type_table, ir_array_data_type(type_table, parent_type));
+          
+          block->value = e_value_from_index_offset(data_type, id.idx);
+          block->value_memory = buffer_make(array->data, array->count * data_type->byte_count);
+        }
+        else
+        {
+          // NOTE(erb): access here
+          IR_Field_Type *field = (parent_type->fields + id.idx);
+          IR_Type *field_type = ir_type_from_id(type_table, field->type);
+          block->value = e_value_slice_as(&parent->value, field_type, field->byte_offset);
+          block->value_memory = parent->value_memory;
+        }
+      }
+    }
+    
+    // NOTE(erb): leave it as is if we have a custom expansion
+    if(is_expansion_not_slice && 
+       ir_type_array_contains(custom_exp_types, custom_exp_count, block->value.type))
+    {
+      block->expansion_size = 1;
+    }
+    else
+    {
+      // NOTE(erb): default expansion for arrays and structs
+      IR_Type *type = ir_type_from_id(type_table, block->value.type);
+      if(type->kind == IRTypeKind_Record)
+      {
+        if(type->is_array_record)
+        {
+          IR_Array *array = e_array_from_value_cast_unchecked(&block->value_memory, &block->value);
+          block->expansion_size = array->count;
+        }
+        else
+        {
+          block->expansion_size = type->field_count;
+        }
+        
+        Eval_Watch_ID child_id = {.parent = hash_from_watch_id(id)};
+        for(EachU32(idx, block->expansion_size))
+        {
+          child_id.idx = idx;
+          push_block_tree_expansions_recur(arena, block, child_id, 
+                                           expansion_state, type_table, false, 
+                                           custom_exp_types, custom_exp_count);
+        }
+      }
+    }
+  }
+}
+
+Eval_Block_Range *
+push_block_range_from_tree(Arena *arena, Eval_Block_Range_List *list, Eval_Block_Tree *tree, U32 depth)
+{
+  Eval_Block_Range *result = PushStruct(arena, Eval_Block_Range);
+  SLLQueueAppend(list->first, list->last, result);
+  ++list->count;
+  result->id = tree->id;
+  result->error = tree->error;
+  result->str = tree->str;
+  result->depth = depth;
+  result->value = tree->value;
+  result->value_memory = tree->value_memory;
+  result->is_header = (tree->expansion_size == 0);
+  return(result);
+}
 
 void
-expr_nest_push(Arena *arena, Expr_Nest_Kind kind, Expr_Nest **top, Expr_Nest **first_free)
+push_block_range_list_from_tree_recur(Arena *arena, Eval_Block_Range_List *list, Eval_Block_Tree *tree, U32 depth)
 {
-  Expr_Nest *nest = *first_free;
-  if(nest != 0)
+  Eval_Block_Range *first = push_block_range_from_tree(arena, list, tree, depth);
+  first->range_in_parent_start = 0;
+  first->range_in_parent_size = Cap1(tree->expansion_size);
+  
+  Eval_Block_Range *prev = first;
+  
+  U32 child_depth = depth+1;
+  for(EachNode(Eval_Block_Tree, child, tree->children.first))
   {
-    SLLStackPop(*first_free);
+    push_block_range_list_from_tree_recur(arena, list, child, child_depth);
+    
+    prev->range_in_parent_size = AssertOrUSub(child->id.idx, prev->range_in_parent_start) + 1;
+    
+    Eval_Block_Range *post = push_block_range_from_tree(arena, list, tree, depth);
+    post->range_in_parent_start = (prev->range_in_parent_start + prev->range_in_parent_size);
+    post->range_in_parent_size = (tree->expansion_size < post->range_in_parent_start ? 0
+                                  : tree->expansion_size - post->range_in_parent_start);
+    prev = post;
+    
+    list->total_expansions += post->range_in_parent_size;
+  }
+  
+  list->total_expansions += first->range_in_parent_size;
+}
+
+void
+watch_expansion_toggle(Watch_Expansion_State *state, Eval_Watch_ID id)
+{
+  U32 hash = hash_from_watch_id(id);
+  
+  U32 idx = hash & (ArraySize(state->slots)-1);
+  
+  Watch_Expansion **row = (state->slots + idx);
+  Watch_Expansion *prev = 0;
+  B32 exists = false;
+  for(EachNode(Watch_Expansion, test, *row))
+  {
+    if(test->id.parent == id.parent &&
+       test->id.idx == id.idx)
+    {
+      exists = true;
+      break;
+    }
+    prev = test;
+  }
+  
+  if(exists) // NOTE(erb): remove
+  {
+    Watch_Expansion *to_remove = 0;
+    if(prev == 0)
+    {
+      to_remove = *row;
+      SLLStackPop(*row);
+    }
+    else
+    {
+      to_remove = prev->next;
+      prev->next = to_remove->next;
+    }
+    Assert(to_remove != 0);
+    SLLStackPush(state->first_free_exp, to_remove);
   }
   else
   {
-    nest = PushStruct(arena, Expr_Nest);
+    Assert(state->first_free_exp != 0);
+    Watch_Expansion *slot = state->first_free_exp;
+    SLLStackPop(state->first_free_exp);
+    SLLStackPush(*row, slot);
+    slot->id = id;
   }
-  nest->kind = kind;
-  SLLStackPush(*top, nest);
 }
 
-Expr_Nest *
-expr_nest_pop(Expr_Nest **top, Expr_Nest **first_free)
+B32
+rose_ir_type_is_view_type(App_State *app_state, IR_Type_ID type)
 {
-  Expr_Nest *nest = *top;
-  SLLStackPop(*top);
-  SLLStackPush(*first_free, nest);
-  return(nest);
+  B32 result = ir_type_array_contains(app_state->ir_view_types, 
+                                      app_state->ir_view_types_count, type);
+  return(result);
 }
 
 void
-ui_expr_editor(UI_Ctx *ui, Expr_Editor_State *state)
+ui_do_ui_rule_from_e_value(App_State *app_state, Buffer *buffer, E_Value *value)
 {
-  Scratch scratch = scratch_begin(0, 0);
-  
-  ui_labelf(ui, S8("token editor / picker"));
-  
-  // NOTE(erb): get commands
-  Expr_Cmd_List expr_cmd_list = expr_cmd_list_from_expr(scratch.arena, state->expr);
-  
-  // NOTE(erb): update cursor
-  if(key_pressed(ui, GFXKey_Right))
+  Assert(rose_ir_type_is_view_type(app_state, value->type));
+#if DEBUG
   {
-    state->cursor += 1;
+    IR_Type *type = ir_type_from_id(&app_state->type_table, value->type);
+    Assert(type->field_count >= 1);
+    IR_Field_Type *field = ir_type_field_from_name(type, rose_meta_ui_rule_field_name_str8);
+    Assert(field->byte_offset == 0);
   }
-  if(key_pressed(ui, GFXKey_Left))
-  {
-    state->cursor -= 1;
-  }
-  state->cursor = Cap(state->cursor, 0, (I32)expr_cmd_list.count-1);
-  Assert((expr_cmd_list.count == 0) == (state->expr == 0));
+#endif
+  // NOTE(erb): this assumes that ui_rule field is at offset 0
+  ROSE_UI_Rule ui_rule = *(ROSE_UI_Rule *)e_value_get_bytes_from(buffer, value);
   
-  // NOTE(erb): update is editing
-  if(key_pressed(ui, GFXKey_Enter))
+  // TODO(erb): dispatch table here
+  switch(ui_rule)
   {
-    state->is_editing = !state->is_editing;
+    case ROSEUIRule_Calendar: ui_calendar_view(app_state, buffer, value); break;
+    InvalidDefaultCase;
   }
+}
+
+void
+ui_watch_window_rows(App_State *app_state, UI_Ctx *ui, Watch_Expansion_State *expansion_state, 
+                     IR_Type_Table *type_table, Eval_Block_Range_List *block_list, 
+                     I32 selection_cursor, B32 enter_pressed, U32 eval_max_depth,
+                     B32 allow_custom_expansions)
+{
+  Scratch watch_scratch = scratch_begin(0, 0);
   
-  // NOTE(erb): render row
-  ui_set_next_layout_axis(ui, Axis2_X);
-  ui_set_next_sizing_x(ui, ui_grow());
-  ui_set_next_align_y(ui, UIAlign_Center);
-  ui_set_next_background_color(ui, with_alpha(v4ff(.4f), 1.0f));
-  ui_parentf(ui, UIFlags_DrawBackGround, S8Z())
+  U32 idx = 0;
+  for(EachNode(Eval_Block_Range, block, block_list->first))
   {
-    if(state->expr == 0)
+    if(block->range_in_parent_size > 0)
     {
-      Expr *new_expr = ui_create_new_expr_popup_trigger(ui, &state->arena, 
-                                                        &state->creating_ui_key, 
-                                                        ui_keyf("new_editor_expr"), S8("+"));
-      state->expr = new_expr;
-    }
-    
-    Expr_Nest root_expr_nest = {0};
-    Expr_Nest *top_expr_nest = &root_expr_nest;
-    Expr_Nest *first_free_expr_nest = 0;
-    
-    // NOTE(erb): render each cmd
-    U32 idx = 0;
-    for(EachNode(Expr_Cmd, cmd, expr_cmd_list.first))
-    {
-      B32 is_selected = (idx == (U32)state->cursor);
-      B32 is_editing = (is_selected && state->is_editing);
-      
-      if(is_selected)
+      // NOTE(erb): pre computations
+      IR_Type *output_type = 0;
+      IR_Type *data_type = 0;
+      Buffer expansion_buffer = {0};
+      if(block->error.value == 0)
       {
-        ui_set_next_font_size(ui, 36.0f);
+        output_type = ir_type_from_id(type_table, block->value.type);
+        Assert(output_type->kind == IRTypeKind_Record);
+        AssertImplies(!output_type->is_array_record,
+                      block->range_in_parent_start < output_type->field_count && 
+                      block->range_in_parent_start + block->range_in_parent_size < output_type->field_count + 1);
+        
+        if(!block->is_header && output_type->is_array_record)
+        {
+          data_type = ir_type_from_id(type_table, ir_array_data_type(type_table, output_type));
+          IR_Array *array = e_array_from_value_cast_unchecked(&block->value_memory, &block->value);
+          expansion_buffer = buffer_make(array->data, array->count * data_type->byte_count);
+        }
+        else
+        {
+          expansion_buffer = block->value_memory;
+        }
       }
       
-      Expr *expr = cmd->expr;
-      Assert(expr != 0);
-      UI_Key expr_input_key = ui_keyf("u32_line_input_expr_%p", expr);
+      Eval_Watch_ID expansion_id = {0};
+      expansion_id.parent = (block->is_header ? block->id.parent : hash_from_watch_id(block->id));
       
-      switch(cmd->kind)
+      // NOTE(erb): loop each index in expansion
+      for(EachU32(expansion_tick, block->range_in_parent_size))
       {
-        case ExprCmdKind_Primary:
-        {
-          // NOTE(erb): primary render
-          switch(cmd->expr->prim.kind)
-          {
-            case ExprPrimaryKind_Identifier: 
-            {
-              ui_set_next_font_color(ui, color_blue);
-              ui_labelf(ui, expr->prim.str8);
-            } break;
-            
-            case ExprPrimaryKind_NumLiteral: 
-            {
-              if(is_editing)
-              {
-                ui_set_next_sizing_x(ui, ui_shrink());
-                UI_Line_Input_State *u32_input = ui_line_input(ui, expr_input_key);
-                if(ui_line_input_created(ui, u32_input))
-                {
-                  str8_writer_u64(&u32_input->writer, expr->prim.u32, 10, 
-                                  digit_count_u64(expr->prim.u32, 10), false);
-                }
-                
-                U64 parse_idx = 0;
-                U32 value = str8_parse_u32_simple(u32_input->writer.str, &parse_idx);
-                if(idx != 0)
-                {
-                  expr->prim.u32 = value;
-                }
-              }
-              else
-              {
-                ui_set_next_border_color(ui, color_blank);
-                ui_set_next_background_color(ui, color_blank);
-                ui_set_next_font_color(ui, color_green);
-                if(ui_buttonf(ui, S8("%u##expr_num_btn_%p"), expr->prim.u32, expr).left_clicked)
-                {
-                  state->is_editing = true;
-                  state->cursor = idx;
-                }
-              }
-            } break;
-            
-            case ExprPrimaryKind_StrLiteral: 
-            {
-              ui_set_next_font_color(ui, v4f(0.1f, 0.5f, 0.1f, 1.0f));
-              ui_labelf(ui, S8("`%S`"), expr->prim.str8);
-            } break;
-            
-            InvalidDefaultCase;
-          }
-        } break;
+        Scratch scratch = arena_get_scratch(watch_scratch.arena);
+        U32 expansion_idx = (expansion_tick + block->range_in_parent_start);
+        expansion_id.idx = expansion_idx;
+        B32 is_selected = (idx == (U32)selection_cursor);
         
-        case ExprCmdKind_BinaryOp:
+        if(is_selected && enter_pressed)
         {
-#define OP(k, s) [ExprBinaryKind_##k] = S8Lit(s)
-          String8 expr_bin_kind_str_table[] = 
-          {
-            OP(Sum, "+"),
-            OP(Mul, "*"),
-            OP(Sub, "-"),
-            OP(Div, "/"),
-            OP(Mod, "%"),
-            
-            OP(Eq, "=="),
-            OP(Gt, ">"),
-            OP(Ge, ">="),
-            OP(Lt, "<"),
-            OP(Le, "<="),
-            
-            OP(BitAnd, "&"),
-            OP(BitOr, "|"),
-            OP(LogicAnd, "&&"),
-            OP(LogicOr, "||"),
-            OP(Access, "."),
-          };
-          Assert(ArraySize(expr_bin_kind_str_table) == ExprBinaryKind_COUNT);
-#undef OP
+          watch_expansion_toggle(expansion_state, expansion_id);
+        }
+        
+        // NOTE(erb): produce type & value (& label)
+        B32 is_custom_ui_expansion = false;
+        B32 is_field = false;
+        String8 label_str = {0};
+        IR_Type *expansion_type = 0;
+        E_Value expansion_value = {0};
+        if(block->error.value == 0)
+        {
+          is_custom_ui_expansion = (allow_custom_expansions && rose_ir_type_is_view_type(app_state, output_type->id));
           
-          if(is_editing)
+          if(block->is_header || is_custom_ui_expansion)
           {
-            UI_Key lister_key = ui_keyf("ui_expr_lister_key_%p", expr);
-            UI_Line_Input_State *search_input = ui_line_input(ui, expr_input_key);
-            UI_Node *cached_node = ui_node_from_key(ui, expr_input_key);
-            
-            // NOTE(erb): cell lister
-            if(cached_node != 0)
-            {
-              UI_Cell *cell_arr = PushArray(scratch.arena, ExprBinaryKind_COUNT, UI_Cell);
-              U32 cell_idx = 0;
-              for(EachElement(String8, str, expr_bin_kind_str_table))
-              {
-                UI_Cell *cell = (cell_arr + cell_idx);
-                cell->label = *str;
-                cell->data = (void *)(U64)cell_idx;
-                cell->flags = UICellFlags_Clickable;
-                cell_idx += 1;
-              }
-              
-              Range_V2f rng = ui_node_rng_v2f(cached_node);
-              UI_Lister_Popup_Result lister_result = ui_cell_lister_list_floating_popup(ui, v2f(rng.min.x, rng.max.y), lister_key, 
-                                                                                        cell_arr, cell_idx, search_input->writer.str);
-              if(lister_result.lister.selected != 0)
-              {
-                Expr_Binary_Kind bin_kind = (Expr_Binary_Kind)(U64)lister_result.lister.selected->data;
-                Assert(bin_kind >= 0 && bin_kind < ExprBinaryKind_COUNT);
-                expr->bin.kind = (Expr_Binary_Kind)bin_kind;
-                
-                state->is_editing = false;
-              }
-            }
+            expansion_value = block->value;
+            label_str = block->str;
+            expansion_type = output_type;
           }
           else
           {
-            String8 str = expr_bin_kind_str_table[expr->bin.kind];
-            
-            ui_set_next_border_color(ui, color_blank);
-            ui_set_next_background_color(ui, color_blank);
-            ui_set_next_font_color(ui, color_red);
-            if (ui_buttonf(ui, S8("%S##expr_op_btn_%p"), str, expr).left_clicked)
+            if(output_type->is_array_record)
             {
-              state->is_editing = true;
-              state->cursor = idx;
+              expansion_value = e_value_from_index_offset(data_type, expansion_idx);
+              expansion_type = data_type;
+            }
+            else
+            {
+              is_field = true;
+              IR_Field_Type *field = (output_type->fields + expansion_idx);
+              IR_Type *field_type = ir_type_from_id(type_table, field->type);
+              expansion_value = e_value_slice_as(&block->value, field_type, field->byte_offset);
+              label_str = field->name;
+              expansion_type = field_type;
             }
           }
-        } break;
+        }
         
-        case ExprCmdKind_BinaryBegin:
-        {
-          expr_nest_push(scratch.arena, ExprNestKind_Bin, &top_expr_nest, &first_free_expr_nest);
-          
-          // NOTE(erb): concat expr kind here (BEFORE)?
-          ui_set_next_font_color(ui, color_white);
-          ui_labelf(ui, S8("("));
-        } break;
         
-        case ExprCmdKind_FunctionBegin:
-        {
-          expr_nest_push(scratch.arena, ExprNestKind_Func, &top_expr_nest, &first_free_expr_nest);
-          
-          // NOTE(erb): function name here
-          ui_set_next_font_color(ui, color_blue);
-          ui_labelf(ui, expr->func.name);
-          
-          // NOTE(erb): concat expr kind here (BEFORE)?
-          ui_set_next_font_color(ui, color_white);
-          ui_labelf(ui, S8("("));
-        } break;
+        // NOTE(erb): ui representation
         
-        case ExprCmdKind_BinaryEnd:
+        ui_set_next_border_color(ui, (is_selected ? color_red : color_white));
+        ui_set_next_border_thickness(ui, 2.0f);
+        ui_set_next_layout_axis(ui, Axis2_X);
+        ui_sizing(ui, ui_grow(), ui_fit()) 
+          ui_parentf(ui, UIFlags_DrawBorder, S8Z())
         {
-          expr_nest_pop(&top_expr_nest, &first_free_expr_nest);
-          
-          // NOTE(erb): concat expr kind here (AFTER)?
-          ui_set_next_font_color(ui, color_white);
-          ui_labelf(ui, S8(")"));
-          
-          Expr *new_sibling = ui_create_new_expr_popup_trigger(ui, &state->arena, 
-                                                               &state->creating_ui_key, 
-                                                               ui_keyf("new_expr_after_%p", expr),
-                                                               S8("&& +"));
-          if(new_sibling != 0)
+          if(block->error.value == 0 && 
+             !block->is_header && 
+             is_custom_ui_expansion)
           {
-            Expr *current = expr;
-            Expr *left = PushStruct(&state->arena, Expr);
-            
-            // NOTE(erb): copy current - to left
-            left->kind = current->kind;
-            switch(left->kind)
+            ui_do_ui_rule_from_e_value(app_state, &expansion_buffer, &expansion_value);
+          }
+          else
+          {
+            // NOTE(erb): value str & type str
+            B32 can_expand_type = false;
+            Fancy_String8_List value_fancy_str = {0};
+            Fancy_String8_List type_fancy_str = {0};
+            if(block->error.value == 0)
             {
-              case ExprKind_Binary  : left->bin  = current->bin;  break;
-              case ExprKind_Primary : left->prim = current->prim; break;
-              case ExprKind_Function: left->func = current->func; break;
-              InvalidDefaultCase;
+              can_expand_type = (expansion_type->kind == IRTypeKind_Record);
+              fancy_str8_list_from_e_value_recur(scratch.arena, &value_fancy_str, &expansion_value, 
+                                                 &expansion_buffer, type_table, 0, eval_max_depth);
+              fancy_str8_list_from_ir_type_recur(scratch.arena, &type_fancy_str, expansion_type, 
+                                                 type_table, 0, eval_max_depth);
             }
-            left->parent = current;
+            else
+            {
+              fancy_str8_push(scratch.arena, &value_fancy_str, block->error, color_red);
+              fancy_str8_push(scratch.arena, &type_fancy_str, S8("ERR"), color_yellow);
+            }
             
-            // NOTE(erb): default new node - to right
-            new_sibling->parent = current;
+            // NOTE(erb): basic ui rendering
+            ui_parentf(ui, 0, S8Z())
+            {
+              ui_spacer(ui, 20.f*block->depth);
+              
+              if(can_expand_type)
+              {
+                B32 is_expanded = watch_id_is_expanded(expansion_state, expansion_id);
+                ui_set_next_font_color(ui, color_yellow);
+                ui_labelf(ui, (is_expanded ? S8("v") : S8(">")));
+              }
+              
+              if(label_str.size == 0)
+              {
+                ui_labelf(ui, S8("[%d]"), expansion_idx);
+              }
+              else if(is_field)
+              {
+                ui_labelf(ui, S8(".%S"), label_str);
+              }
+              else
+              {
+                ui_labelf(ui, S8("%S"), label_str);
+              }
+            }
             
-            // NOTE(erb): current as parent
-            current->kind = ExprKind_Binary;
-            current->bin.kind = ExprBinaryKind_LogicAnd;
-            current->bin.left = left;
-            current->bin.right = new_sibling;
+            ui_parentf(ui, 0, S8Z())
+            {
+              ui_fancy_str(ui, value_fancy_str);
+            }
+            
+            ui_parentf(ui, 0, S8Z())
+            {
+              ui_fancy_str(ui, type_fancy_str);
+            }
           }
-        } break;
+        }
         
-        case ExprCmdKind_FunctionEnd:
-        {
-          expr_nest_pop(&top_expr_nest, &first_free_expr_nest);
-          
-          Expr *new_arg = ui_create_new_expr_popup_trigger(ui, &state->arena, 
-                                                           &state->creating_ui_key,
-                                                           ui_keyf("new_arg_%p", expr), S8("+"));
-          if(new_arg != 0)
-          {
-            expr_list_append(&expr->func.args, new_arg);
-          }
-          
-          ui_set_next_font_color(ui, color_white);
-          ui_labelf(ui, S8(")"));
-        } break;
         
-        InvalidDefaultCase;
+        scratch_end(&scratch);
+        ++idx;
       }
-      
-      // NOTE(erb): draw the comma for function args
-      if(top_expr_nest->kind == ExprNestKind_Func &&
-         cmd->kind != ExprCmdKind_FunctionBegin && 
-         cmd->kind != ExprCmdKind_FunctionEnd)
-      {
-        ui_labelf(ui, S8(","));
-      }
-      
-      idx++;
     }
   }
   
-  scratch_end(&scratch);
+  scratch_end(&watch_scratch);
+}
+
+Eval_Block_Tree_List
+block_tree_list_from_watch_evals(Arena *arena, Watch_Eval *evals, U32 eval_count, 
+                                 IR_Type_Table *type_table, IR_Symbol_Type *top_symbol_type, E_Global_Iden *top_global_iden,
+                                 Watch_Expansion_State *expansion_state, 
+                                 IR_Type_ID *custom_exp_types, U32 custom_exp_count)
+{
+  Eval_Block_Tree_List block_tree_list = {0};
+  Scratch scratch = scratch_begin(&arena, 1);
+  
+  for(EachU32(idx, eval_count))
+  {
+    Watch_Eval *state = (evals + idx);
+    String8 eval_str = S8Struct(state->str_buffer, state->str_size);
+    Assert(state->arena.buffer.base != 0);
+    AssertImplies(!state->has_data, state->error.value == 0);
+    
+    E_Value_Interp interp = {0};
+    {
+      if(!state->has_data)
+      {
+        Scratch ast_scratch = arena_get_scratch(scratch.arena);
+        AST_Node *ast = ast_from_text(ast_scratch.arena, eval_str, &state->error);
+        if(state->error.value == 0)
+        {
+          state->op_list = ir_op_list_from_ast(&state->arena, ast, type_table, 
+                                               top_symbol_type, &state->error);
+        }
+        scratch_end(&ast_scratch);
+        if(state->error.value == 0 && 
+           state->op_list.count == 0)
+        {
+          // NOTE(erb): handle empty op-list: produce an error?
+          // TODO(erb): might not be the best way to do this
+          state->error = S8("expression produced no operations");
+        }
+        
+        state->has_data = true;
+        
+        if(state->error.value == 0 && 
+           ir_type_array_contains(custom_exp_types, custom_exp_count, state->op_list.first->type))
+        {
+          state->should_cache_interp = true;
+          interp = e_interp_from_ir_ops(&state->arena, &state->op_list, type_table, top_global_iden);
+          state->interp = interp;
+        }
+      }
+      
+      if(state->error.value != 0)
+      {
+        arena_release(&state->arena);
+      }
+      else
+      {
+        if(!state->should_cache_interp)
+        {
+          interp = e_interp_from_ir_ops(arena, &state->op_list, type_table, top_global_iden);
+        }
+        else
+        {
+          interp = state->interp;
+        }
+      }
+    }
+    
+    Eval_Block_Tree *block = push_list_block_tree(arena, &block_tree_list, eval_str, 
+                                                  state->error, watch_id_make(idx, 0));
+    block->value = interp.value;
+    block->value_memory = interp.memory;
+    push_block_tree_expansions_recur(arena, block, block->id, 
+                                     expansion_state, type_table, true,
+                                     custom_exp_types, custom_exp_count);
+  }
+  return(block_tree_list);
 }
 
 void
-watch_panel(App_State *app_state, View_ID id)
+watch_eval_init(Watch_Eval *eval, String8 str)
 {
-  Assert(view_id_is_valid(id));
-  View *view = view_from_id(app_state, id);
-  Assert(view);
-  Assert(view->kind == ViewKind_Watch);
+  Assert(str.size <= (U64)eval->str_buffer);
+  eval->str_size = safe_truncate_U64_to_U32(str.size);
+  ArrayCopy(str.value, eval->str_buffer, str.size);
   
-  if(!view->is_initialized)
+  arena_init(&eval->arena, eval->memory, ArraySize(eval->memory));
+}
+
+void
+watch_expansion_state_init(Watch_Expansion_State *state)
+{
+  for(EachElement(Watch_Expansion, s, state->expansions))
   {
-    view->is_initialized = true;
-    view->expr_node_arena_size = sizeof(Expr)*32;
-    view->expr_writer_buffer_size = 64;
-    arena_init(&view->expr_state_arena, view->expr_state_buffer, ArraySize(view->expr_state_buffer));
+    s->next = s+1;
+  }
+  state->first_free_exp = state->expansions;
+}
+
+void
+watch_panel(App_State *app_state, View *view)
+{
+  Assert(view != 0);
+  Assert(view->is_watch);
+  
+  if(!view->is_watch_first_time)
+  {
+    view->is_watch_first_time = true;
     
-    // NOTE(erb): init expr editor stuff
-    arena_init(&view->expr_editor_state.arena, 
-               view->expr_editor_state.buffer,
-               ArraySize(view->expr_editor_state.buffer));
+    view->eval_max_depth = 3;
+    watch_expansion_state_init(&view->expansion_state);
+    
+    // NOTE(erb): debug stuff
+    {
+      Assert(view->eval_count+1 < ArraySize(view->evals));
+      Watch_Eval *new_eval = (view->evals + view->eval_count++);
+      watch_eval_init(new_eval, S8("calendar()"));
+    }
   }
   
   UI_Ctx *ui = &app_state->ui;
   UI_Key input_key = ui_keyf("watch_expr_input");
   
-  // NOTE(erb): expr selection
+  // NOTE(erb): update max eval depth
+  if(key_down(ui, GFXKey_Control))
+  {
+    I32 new_max_depth = view->eval_max_depth;
+    if(key_pressed(ui, GFXKey_Right))
+    {
+      new_max_depth += 1;
+    }
+    if(key_pressed(ui, GFXKey_Left))
+    {
+      new_max_depth += -1;
+    }
+    view->eval_max_depth = (U32)Cap0(new_max_depth);
+  }
+  
+  B32 enter_pressed = key_pressed(ui, GFXKey_Enter);
+  
+  Scratch view_scratch = scratch_begin(0, 0);
+  
+  IR_Type_Table *type_table = &app_state->type_table;
+  IR_Symbol_Type *top_symbol_type = app_state->top_symbol_type;
+  E_Global_Iden *top_global_iden = app_state->top_global_iden;
+  
+  // NOTE(erb): build block tree
+  Eval_Block_Tree_List block_tree_list = block_tree_list_from_watch_evals(view_scratch.arena, view->evals, view->eval_count,
+                                                                          type_table, top_symbol_type, top_global_iden, 
+                                                                          &view->expansion_state, 
+                                                                          app_state->ir_view_types, app_state->ir_view_types_count);
+  
+  // NOTE(erb): block list
+  Eval_Block_Range_List block_list = {0};
+  for(EachNode(Eval_Block_Tree, tree, block_tree_list.first))
+  {
+    push_block_range_list_from_tree_recur(view_scratch.arena, &block_list, tree, 0);
+  }
+  
+  // NOTE(erb): update cursor
   {
     I32 new_cursor = view->selection_cursor;
     if(key_pressed(ui, GFXKey_Up))
@@ -1551,20 +1434,9 @@ watch_panel(App_State *app_state, View_ID id)
     {
       new_cursor += 1;
     }
-    if(new_cursor < 0)
-    {
-      new_cursor = (I32)view->expr_state_count;
-    }
-    if(new_cursor > (I32)view->expr_state_count)
-    {
-      new_cursor = 0;
-    }
-    view->selection_cursor = new_cursor;
+    view->selection_cursor = Cap(new_cursor, 0, (I32)CapBottom(block_list.total_expansions, 1) - 1);
   }
   
-  B32 activate_edit_field = key_pressed(ui, GFXKey_F2);
-  B32 exit_edit_field = key_pressed(ui, GFXKey_Escape);
-  B32 toggle_expr_expanded = key_pressed(ui, GFXKey_Enter);
   
   ui_set_next_sizing(ui, ui_grow(), ui_grow());
   ui_set_next_layout_axis(ui, Axis2_Y);
@@ -1575,502 +1447,25 @@ watch_panel(App_State *app_state, View_ID id)
     UI_Line_Input_State *input = ui_line_input_state_from_key(ui, input_key);
     
     // NOTE(erb): ON enter new expr
-    if(input->writer.str.size != 0 && toggle_expr_expanded)
+    if(input->writer.str.size != 0 && enter_pressed)
     {
-      Expr_State *node = view->first_free_expr_state;
-      if(node != 0)
-      {
-        SLLStackPop(view->first_free_expr_state);
-      }
-      else
-      {
-        node = PushStruct(&view->expr_state_arena, Expr_State);
-        {
-          str8_writer_init(&node->input_state.writer, 
-                           PushArray(&view->expr_state_arena, view->expr_writer_buffer_size, U8), 
-                           view->expr_writer_buffer_size);
-          arena_init(&node->expr_alloc_arena,
-                     PushArray(&view->expr_state_arena, view->expr_node_arena_size, U8),
-                     view->expr_node_arena_size);
-        }
-        SLLQueueAppend(view->first_expr_state, view->last_expr_state, node);
-        view->expr_state_count += 1;
-        str8_writer_str(&node->input_state.writer, input->writer.str);
-        node->input_state.key = ui_keyf("expr_edit_input_%p", node);
-        arena_release(&node->expr_alloc_arena);
-        
-        view->selection_cursor = (I32)view->expr_state_count;
-        
-        str8_writer_reset(&input->writer);
-      }
+      // NOTE(erb): new eval & clear input
+      Assert(view->eval_count+1 < ArraySize(view->evals));
+      Watch_Eval *new_eval = (view->evals + view->eval_count++);
+      
+      watch_eval_init(new_eval, input->writer.str);
+      input->writer.str.size = 0;
     }
     
-    {
-      // NOTE(erb): ui for each expr
-      Scratch view_scratch = scratch_begin(0, 0);
-      I32 expr_idx = 0;
-      for(EachNode(Expr_State, expr_state, view->first_expr_state))
-      {
-        String8 expr_str = expr_state->input_state.writer.str;
-        Scratch scratch = arena_get_scratch(view_scratch.arena);
-        
-        B32 is_selected = (view->selection_cursor == expr_idx);
-        
-        if(is_selected)
-        {
-          if(activate_edit_field)
-          {
-            expr_state->is_editing = true;
-          }
-          if(exit_edit_field)
-          {
-            expr_state->is_editing = false;
-          }
-          if(toggle_expr_expanded)
-          {
-            expr_state->is_expanded = !expr_state->is_expanded;
-          }
-        }
-        
-        // NOTE(erb): get the expression parse
-        Expr *expr = 0;
-        {
-          U64 expr_str_hash = str8_hash(expr_str);
-          if(expr_str_hash != expr_state->cached_expr_hash)
-          {
-            expr_state->cached_expr_hash = expr_str_hash;
-            ZeroStruct(&expr_state->error);
-            arena_release(&expr_state->expr_alloc_arena);
-            
-            // NOTE(erb): tokenizing
-            Token_List tokens = token_list_from_str(scratch.arena, expr_str, &expr_state->error);
-            
-            // NOTE(erb): parsing
-            if(expr_state->error.value == 0)
-            {
-              Token_Iterator token_it = {0};
-              token_it.current = tokens.first;
-              expr_state->cached_expr = expr_from_token_it(&expr_state->expr_alloc_arena, &token_it, &expr_state->error);
-            }
-          }
-          
-          expr = expr_state->cached_expr;
-        }
-        
-        // NOTE(erb): evaluating
-        Expr_Value value = {0};
-        if(expr_state->error.value == 0)
-        {
-          // NOTE(erb): get global vars
-          Expr_Environment env = {0};
-          env.data = (void *)app_state;
-          
-          expr_env_append_var_func(&env, scratch.arena, S8("events"), app_get_events_expr);
-          expr_env_append_var_func(&env, scratch.arena, S8("event"), app_get_event_from_id_expr);
-          expr_env_append_var_func(&env, scratch.arena, S8("tags"), app_get_tags_expr);
-          
-          expr_env_append_var_expr_func(&env, scratch.arena, S8("columns"), app_expand_arg_columns_ui_rule);
-          
-          expr_env_append_var_func(&env, scratch.arena, S8("calendar"), app_ui_rule_calendar);
-          expr_env_append_var_func(&env, scratch.arena, S8("raw"), app_ui_rule_raw);
-          expr_env_append_var_func(&env, scratch.arena, S8("focus"), app_ui_rule_focus);
-          
-          Expr_Value now_value = {0};
-          now_value.dt = os_get_local_date_time();
-          now_value.type = ExprType_DateTime;
-          expr_env_append_var_value(&env, scratch.arena, S8("now"), now_value);
-          
-          value = expr_value_from_expr_with_environment(scratch.arena, expr, &env, &expr_state->error);
-        }
-        
-        
-        
-        if(expr_state->error.value != 0)
-        {
-          value.str8 = expr_state->error;
-          value.type = ExprType_Str8;
-        }
-        
-        // NOTE(erb): ui rendering
-        switch(value.ui_rule)
-        {
-          case ExprUIRule_None:
-          case ExprUIRule_Raw:
-          case ExprUIRule_Columns:
-          {
-            UI_Flags header_row_flags = 0;
-            if(is_selected)
-            {
-              header_row_flags |= UIFlags_DrawBackGround;
-              ui_set_next_background_color(ui, with_alpha(color_blue, 0.2f));
-            }
-            
-            // NOTE(erb): expr show row
-            ui_set_next_sizing(ui, ui_grow(), ui_fit());
-            ui_set_next_layout_axis(ui, Axis2_X);
-            ui_set_next_child_gap(ui, 0);
-            ui_parentf(ui, header_row_flags, S8Z())
-            {
-              // NOTE(erb): header
-              {
-                UI_Cell cell = {0};
-                if(expr_state->is_editing)
-                {
-                  cell.flags = UICellFlags_LineInput;
-                  cell.line_input = &expr_state->input_state;
-                }
-                else
-                {
-                  cell.flags = UICellFlags_FancyStrLabel | (expr_state->is_expanded ? 
-                                                            UICellFlags_DrawExpandArrowOpen : 
-                                                            UICellFlags_DrawExpandArrowClose);
-                  fancy_str8_push(scratch.arena, &cell.label_fancy_str, expr_str, color_red);
-                }
-                ui_cell(ui, &cell, ui_keyf("expr_label_cell_%S", expr_str));
-              }
-              
-              // NOTE(erb): leaf
-              {
-                UI_Cell cell = {0};
-                cell_init_from_expr_value_leaf(scratch.arena, &cell, &value);
-                ui_cell(ui, &cell, ui_keyf("table_cell_expr_ui"));
-              }
-            }
-            
-            if(expr_state->is_expanded && value.type == ExprType_List)
-            {
-              if(value.ui_rule == ExprUIRule_Columns)
-              {
-                for(EachNode(Expr_Value, row_expr, value.list.first))
-                {
-                  if(row_expr->type == ExprType_List)
-                  {
-                    ui_set_next_layout_axis(ui, Axis2_X);
-                    ui_set_next_sizing_x(ui, ui_grow());
-                    ui_parentf(ui, 0, S8Z())
-                    {
-                      for(EachNode(Expr_Value, col_expr, row_expr->list.first))
-                      {
-                        UI_Cell *cell = PushStruct(scratch.arena, UI_Cell);
-                        cell_init_from_expr_value_leaf(scratch.arena, cell, col_expr);
-                        ui_cell(ui, cell, ui_keyf("table_cell_expr_ui_%p", cell));
-                      }
-                    }
-                  }
-                  else
-                  {
-                    ui_labelf(ui, S8("expected rows to be list type"));
-                    break;
-                  }
-                }
-              }
-              else
-              {
-                UI_Cell *cell_arr = PushArray(scratch.arena, value.list.count, UI_Cell);
-                U32 cell_idx = 0;
-                for(EachNode(Expr_Value, child, value.list.first))
-                {
-                  UI_Cell *cell = (cell_arr + cell_idx++);
-                  cell_init_from_expr_value_leaf(scratch.arena, cell, child);
-                }
-                ui_cell_lister_items(ui, cell_arr, value.list.count, S8Z(), 0, true);
-              }
-            }
-          } break;
-          
-          case ExprUIRule_Calendar:
-          {
-            ui_labelf(ui, S8("calendar!!!!!!!"));
-            if(value.type == ExprType_List && 
-               value.sub_type == ExprType_DateTime)
-            {
-              ui_set_next_sizing(ui, ui_grow(), ui_grow());
-              UI_Node *calendar_container = ui_nodef(ui, 0, S8("watch_calendar_container"));
-              ui_parent(ui, calendar_container);
-              
-              UI_Node *cached_cal_container = ui_node_from_key(ui, calendar_container->key);
-              if(cached_cal_container != 0)
-              {
-                Range_V2f space = ui_node_rng_v2f_inner(cached_cal_container);
-                if(value.list.count > 0)
-                {
-                  Assert(value.list.first != 0);
-                  Assert(value.list.first->type == ExprType_DateTime);
-                  Calendar_Date start_date = value.list.first->dt.date;
-                  
-                  U32 weeks_count = CapBottom(value.list.count/7, 1);
-                  
-                  ui_calendar(ui, start_date, v2i(7, weeks_count), space, &app_state->event_list);
-                }
-                else
-                {
-                  ui_labelf(ui, S8("empty calendar"));
-                }
-              }
-            }
-            else
-            {
-              ui_labelf(ui, S8("expected list of dates for calendar view"));
-              InvalidCodePath;
-            }
-          } break;
-          
-          case ExprUIRule_FocusEvent:
-          {
-            ui_labelf(ui, S8("focus event"));
-            
-            if(value.type == ExprType_Event)
-            {
-              Assert(value.event != 0);
-              B32 is_color_picker_open = false;
-              V4f new_tag_color = color_red;
-              Date_Input_State date_input_state = {0};
-              ui_focus_event(ui, app_state, value.event, 
-                             &is_color_picker_open, &new_tag_color, &date_input_state);
-            }
-            else
-            {
-              ui_labelf(ui, S8("expected event for focus view"));
-              InvalidCodePath;
-            }
-          } break;
-          
-          InvalidDefaultCase;
-        }
-        
-        expr_idx += 1;
-      }
-      
-      if(view->selection_cursor == (I32)view->expr_state_count)
-      {
-        ui_set_next_border_color(ui, color_red);
-      }
-      ui_line_input(ui, input_key);
-      
-      // NOTE(erb): expr editor
-      
-      scratch_end(&view_scratch);
-    }
+    // NOTE(erb): watch window rows
+    ui_watch_window_rows(app_state, ui, &view->expansion_state, type_table, 
+                         &block_list, view->selection_cursor, enter_pressed, 
+                         view->eval_max_depth, true);
+    
+    // NOTE(erb): input field box
+    ui_line_input_update_state(ui, input);
   }
-}
-
-void
-table_panel(App_State *app_state, View_ID id)
-{
-  Assert(view_id_is_valid(id));
-  View *view = view_from_id(app_state, id);
-  Assert(view != 0);
-  Assert(view->kind == ViewKind_Table);
-  
-  if(!view->is_initialized)
-  {
-    view->is_initialized = true;
-    columns_append_and_resize(view, 0.5f);
-    columns_equal_size(view);
-  }
-  
-  UI_Ctx *ui = &app_state->ui;
-  
-  Scratch scratch = scratch_begin(0, 0);
-  
-  ui_set_next_sizing(ui, ui_grow(), ui_grow());
-  ui_set_next_layout_axis(ui, Axis2_Y);
-  ui_set_next_background_color(ui, with_alpha(v4ff(0.2f), 1.0f));
-  UI_Node *table_space = ui_nodef(ui, UIFlags_DrawBackGround, S8("table_space_%ull"), id);
-  ui_parent(ui, table_space)
-  {
-    Range_V2f table_rect = {0};
-    UI_Node *cached = ui_node_from_key(ui, table_space->key);
-    if(cached) 
-    {
-      table_rect = ui_node_rng_v2f_inner(cached);
-    }
-    
-    F32 row_width = rng_v2f_size(table_rect).x;
-    
-    UI_Key last_row_key = ui_keyf("last_row_%u", id);
-    UI_Node *last_row_node = ui_node_from_key(ui, last_row_key);
-    F32 last_row_max_y = 0; 
-    if(last_row_node != 0)
-    {
-      last_row_max_y = ui_node_rng_v2f(last_row_node).max.y;
-    }
-    F32 table_max_y = Max(last_row_max_y, table_rect.min.y);
-    
-    B32 did_hover_resize = false;
-    
-    // NOTE(erb): borders
-    
-    V2f cursor = table_rect.min;
-    
-    for(U32 col_idx = 1; col_idx < view->column_count; ++col_idx)
-    {
-      Column *min_col = (view->columns + col_idx-1);
-      Column *max_col = (view->columns + col_idx);
-      
-      cursor.x += min_col->pct_of_row*row_width;
-      
-      Range_V2f rect = {0};
-      rect.min = v2f(cursor.x-8.0f, cursor.y);
-      rect.max = v2f(cursor.x+8.0f, table_max_y);
-      
-      ui_set_next_rect(ui, rect);
-      ui_set_next_hover_cursor(ui, GFXCursorKind_ArrowWE);
-      UI_Node *border = ui_nodef(ui, 
-                                 UIFlags_Floating
-                                 |UIFlags_Comm,
-                                 S8("column_resize_border_%u_%u"), 
-                                 id, col_idx);
-      ui_parent(ui, border);
-      UI_Comm comm = ui_comm_from_node(ui, border);
-      
-      // TODO(erb): very very hacky stuff to avoid event bubbling
-      if(comm.hovered)
-      {
-        did_hover_resize = true;
-      }
-      if(comm.left_dragging)
-      {
-        F32 drag_delta = ui->input.cursor_delta.x;
-        F32 min_col_px__pre_drag = min_col->pct_of_row * row_width;
-        F32 max_col_px__pre_drag = max_col->pct_of_row * row_width;
-        F32 min_col_px__post_drag = min_col_px__pre_drag + drag_delta;
-        F32 max_col_px__post_drag = max_col_px__pre_drag - drag_delta;
-        Assert(row_width > 0);
-        min_col->pct_of_row = min_col_px__post_drag/row_width;
-        max_col->pct_of_row = max_col_px__post_drag/row_width;
-      }
-      else if(comm.right_clicked)
-      {
-        columns_equal_size(view);
-      }
-    }
-    
-    
-    Table_Layout layout = table_init(table_rect.min, view->columns);
-    
-    // NOTE(erb): header
-    B32 is_first = true;
-    for(U32Each(col_idx, view->column_count))
-    {
-      Column *col = (view->columns + col_idx);
-      
-      F32 width = col->pct_of_row*row_width;
-      ui_set_next_floating_pos(ui, layout.cursor);
-      ui_set_next_sizing(ui, ui_fixed(width), ui_fit());
-      ui_set_next_border_abs(ui, color_white, 1, 0);
-      
-      UI_Flags flags = UIFlags_Floating|UIFlags_DrawBorder|UIFlags_Comm;
-      UI_Key cell_key = {0};
-      if(is_first && app_state->event_list.first == 0)
-      {
-        Assert(app_state->event_list.last == 0);
-        is_first = false;
-        cell_key = last_row_key;
-        flags |= UIFlags_DontSeedKey;
-      }
-      else
-      {
-        cell_key = ui_keyf("col_header_cell_%llu_%u", id, col_idx);
-      }
-      UI_Node *cell = ui_node_make(ui, flags, cell_key, S8Z());
-      ui_parent(ui, cell)
-      {
-        if(col->label.size > 0)
-        {
-          ui_labelf(ui, col->label);
-        }
-        else
-        {
-          UI_Key key = ui_keyf("column_input_key_%u", col_idx);
-          UI_Line_Input_State *input = ui_line_input(ui, key);
-          col->eval_str = input->writer.str;
-        }
-      }
-      
-      // TODO(erb): this is an extreme hack to avoid event bubbling for the drag events.
-      if(!did_hover_resize)
-      {
-        if(ui_comm_from_node(ui, cell).right_clicked)
-        {
-          columns_append_and_resize(view, 0.3f);
-        }
-      }
-      
-      UI_Node *cached_cell = ui_node_from_key(ui, cell->key);
-      F32 height = (cached_cell != 0 ? cached_cell->size.y : 0);
-      table_cell_end(&layout, v2f(width, height));
-    }
-    
-    // NOTE(erb): rows
-    for(EachNode(Event, event, app_state->event_list.first))
-    {
-      table_row(&layout);
-      is_first = true;
-      for(U32Each(col_idx, view->column_count))
-      {
-        Column *col = (view->columns + col_idx);
-        F32 width = col->pct_of_row*row_width;
-        
-        UI_Flags flags = (UIFlags_Floating|
-                          UIFlags_DrawBorder|
-                          UIFlags_Comm);
-        UI_Key cell_key = {0};
-        if(is_first && (event == app_state->event_list.last))
-        {
-          is_first = false;
-          cell_key = last_row_key;
-          flags |= UIFlags_DontSeedKey;
-        }
-        else
-        {
-          cell_key = ui_keyf("col_event_cell_%u_%llu_%u", event->id, id, col_idx);
-        }
-        ui_set_next_floating_pos(ui, layout.cursor);
-        ui_set_next_sizing(ui, ui_fixed(width), ui_fit());
-        ui_set_next_border_abs(ui, color_white, 1, 0);
-        UI_Node *cell_container = ui_node_make(ui, flags, cell_key, S8Z());
-        if(ui_comm_from_node(ui, cell_container).hovered ||
-           ui_is_top_nav_interface(ui, cell_container->key))
-        {
-          cell_container->border_color = color_blue;
-          cell_container->border_thickness = 1.0f;
-        }
-        ui_parent(ui, cell_container)
-        {
-          Scratch cell_scratch = arena_get_scratch(scratch.arena);
-          
-          String8 error = {0};
-          
-          Expr_Environment env = {0};
-          Expr_Value event_value = {0};
-          event_value.event = event;
-          event_value.type = ExprType_Event;
-          expr_env_append_var_value(&env, scratch.arena, S8("$"), event_value);
-          
-          Expr_Value value = expr_value_from_str8_with_environment(cell_scratch.arena, col->eval_str, &env, &error);
-          if(error.value != 0)
-          {
-            value.str8 = error;
-            value.type = ExprType_Str8;
-          }
-          
-          // TODO(erb): make this call cleaner
-          UI_Cell cell = {0};
-          cell_init_from_expr_value_leaf(scratch.arena, &cell, &value);
-          ui_cell(ui, &cell, ui_keyf("table_cell_expr_ui"));
-          
-          scratch_end(&cell_scratch);
-        }
-        
-        UI_Node *cached_cell = ui_node_from_key(ui, cell_container->key);
-        F32 height = (cached_cell != 0 ? cached_cell->size.y : 0);
-        table_cell_end(&layout, v2f(width, height));
-      }
-    }
-  }
-  
-  scratch_end(&scratch);
+  scratch_end(&view_scratch);
 }
 
 void
@@ -2086,7 +1481,7 @@ load_state(App_State *app_state)
     
     SRL_Project_File project = srl_project_from_str(scratch.arena, contents);
     
-    if(project.error.value == 0)
+    if(AssertOrBool(project.error.value == 0))
     {
       app_state->global_id_counter = project.global_id_counter;
       
@@ -2104,7 +1499,6 @@ load_state(App_State *app_state)
         }
       }
     }
-    else InvalidCodePath;
     
     scratch_end(&scratch);
   }
@@ -2138,7 +1532,6 @@ lister_panel(App_State *app_state, View_ID id)
   Assert(view_id_is_valid(id));
   View *view = view_from_id(app_state, id);
   Assert(view != 0);
-  Assert(view->kind == ViewKind_Lister);
   
   UI_Ctx *ui = &app_state->ui;
   
@@ -2159,6 +1552,7 @@ lister_panel(App_State *app_state, View_ID id)
   scratch_end(&scratch);
 }
 
+#if 0
 void
 tags_panel(App_State *app_state, View_ID id)
 {
@@ -2287,14 +1681,15 @@ tags_panel(App_State *app_state, View_ID id)
     }
   }
 }
+#endif
 
+#if 0
 void
 event_focus_panel(App_State *app_state, View_ID id)
 {
   Assert(view_id_is_valid(id));
   View *view = view_from_id(app_state, id);
   Assert(view != 0);
-  Assert(view->kind == ViewKind_EventFocus);
   
   Event *event = 0;
   if(!view->is_initialized)
@@ -2333,6 +1728,7 @@ event_focus_panel(App_State *app_state, View_ID id)
                    &view->date_input_state);
   }
 }
+#endif
 
 void
 spawn_test_tasks(App_State *app_state)
@@ -2403,7 +1799,7 @@ debug_context(App_State *app_state)
   
   ui_parent(ui, container) ui_seed_key(ui, container->key)
   {
-    Debug_Ctx *debug = &app_state->debug_ctx;
+    UI_Debug_Ctx *debug = &app_state->debug_ctx;
     
     ui_set_next_layout_axis(ui, Axis2_X);
     ui_set_next_align_y(ui, UIAlign_Center);
@@ -2505,7 +1901,8 @@ parent_panel_borders(App_State *app_state, Range_V2f client_rect, F32 split_regi
       if(comm.hovered)
       {
         GFX_Cursor_Kind cursor_kind = (panel->split_axis==Axis2_X ? GFXCursorKind_ArrowWE : GFXCursorKind_ArrowNS);
-        ui->cursor_api.set_func(cursor_kind, ui->cursor_api.data);
+        ui_set_cursor(ui, cursor_kind);
+        
       }
       if(comm.left_dragging) // NOTE(erb): drag
       {
@@ -2596,7 +1993,7 @@ panel_move_ui_and_do(App_State *app_state, Range_V2f client_rect, F32 split_regi
         
         B32 has_panel_direction = false;
         Direction2 panel_direction = 0;
-        for(U32Each(dir, Direction2_COUNT))
+        for(EachU32(dir, Direction2_COUNT))
         {
           F32 padding = 5.0f;
           Axis2 axis = dir2_axis(dir);
@@ -2736,79 +2133,92 @@ typedef enum Tab_Button_Kind
 typedef struct Tab_Button_Result Tab_Button_Result;
 struct Tab_Button_Result
 {
-  B32 select_or_drag;
-  B32 remove;
+  B16 select_or_drag;
+  B16 remove;
+  B16 options;
 };
 
 Tab_Button_Result
 draw_tab_button_kind(Tab_Button_Kind kind, View_ID view, App_State *app_state, Panel *panel, 
-                     UI_Key tab_button_container_key, B32 is_current_selected)
+                     UI_Key tab_button_container_key, B32 is_current_selected, 
+                     String8 view_label)
 {
   UI_Ctx *ui = &app_state->ui;
-  
-  V4f font_color = {0};
-  UI_Node *container = 0;
-  
-  switch(kind)
-  {
-    case TabButtonKind_Regular:
-    {
-      font_color = (is_current_selected ? color_black : color_white);
-      V4f bg_color = (is_current_selected ? color_yellow : with_alpha(v4ff(0.4f), 1.0f));
-      
-      ui_set_next_background_color(ui, bg_color);
-      ui_set_next_debug_str(ui, S8("regular-tab-container"));
-      container = ui_node_make(ui, 
-                               UIFlags_DrawBackGround
-                               |UIFlags_DontSeedKey, 
-                               tab_button_container_key, S8Z());
-    } break;
-    
-    case TabButtonKind_DragSource:
-    {
-      font_color = with_alpha(v4ff(0.3f), 0.8f);
-      ui_set_next_border_abs(ui, color_yellow, 4.0f, 3.0f);
-      ui_set_next_background_color(ui, with_alpha(v4ff(0.6f), 0.6f));
-      ui_set_next_debug_str(ui, S8("original-ghost-tab-container"));
-      container = ui_node_make(ui, 
-                               UIFlags_DrawBackGround
-                               |UIFlags_DrawBorder
-                               |UIFlags_DrawRounded
-                               |UIFlags_DontSeedKey, 
-                               tab_button_container_key, S8Z());
-    } break;
-    
-    case TabButtonKind_DragDest:
-    {
-      font_color = color_blank;
-      ui_set_next_border_abs(ui, color_blue, 5.0f, 5.0f);
-      ui_set_next_background_color(ui, color_white);
-      container = ui_nodef(ui, 
-                           UIFlags_DrawBackGround
-                           |UIFlags_DrawBorder
-                           |UIFlags_DrawRounded, 
-                           S8("tab_dest_ghost_%llu"), view);
-    } break;
-    
-    InvalidDefaultCase;
-  }
-  
   Tab_Button_Result result = {0};
   
-  ui_parent(ui, container)
-    ui_font_color(ui, font_color)
-    ui_border_abs(ui, v4ff(0), 0, 0) 
-    ui_background_color(ui, color_blank)
+  ui_seed_key(ui, ui_keyf("tab_button_view_%llu", view))
   {
-    View_Kind view_kind = view_kind_from_id(app_state, view);
+    V4f font_color = {0};
+    UI_Node *container = 0;
+    switch(kind)
+    {
+      case TabButtonKind_Regular:
+      {
+        font_color = (is_current_selected ? color_black : color_white);
+        V4f bg_color = (is_current_selected ? color_yellow : with_alpha(v4ff(0.4f), 1.0f));
+        
+        ui_set_next_background_color(ui, bg_color);
+        ui_set_next_debug_str(ui, S8("regular-tab-container"));
+        container = ui_node_make(ui, 
+                                 UIFlags_DrawBackGround
+                                 |UIFlags_DontSeedKey, 
+                                 tab_button_container_key, S8Z());
+      } break;
+      
+      case TabButtonKind_DragSource:
+      {
+        font_color = with_alpha(v4ff(0.3f), 0.8f);
+        ui_set_next_border_abs(ui, color_yellow, 4.0f, 3.0f);
+        ui_set_next_background_color(ui, with_alpha(v4ff(0.6f), 0.6f));
+        ui_set_next_debug_str(ui, S8("original-ghost-tab-container"));
+        container = ui_node_make(ui, 
+                                 UIFlags_DrawBackGround
+                                 |UIFlags_DrawBorder
+                                 |UIFlags_DrawRounded
+                                 |UIFlags_DontSeedKey, 
+                                 tab_button_container_key, S8Z());
+      } break;
+      
+      case TabButtonKind_DragDest:
+      {
+        font_color = color_blank;
+        ui_set_next_border_abs(ui, color_blue, 5.0f, 5.0f);
+        ui_set_next_background_color(ui, color_white);
+        container = ui_nodef(ui, 
+                             UIFlags_DrawBackGround
+                             |UIFlags_DrawBorder
+                             |UIFlags_DrawRounded, 
+                             S8("tab_dest_ghost_%llu"), view);
+      } break;
+      
+      InvalidDefaultCase;
+    }
     
-    UI_Comm label = ui_buttonf(ui, S8("%S##tab_button_%llu"), label_from_view_kind(view_kind), view);
-    UI_Comm remove = ui_buttonf(ui, S8("[X]##tab_del_%llu"), view);
-    
-    result.select_or_drag = (label.left_clicked || label.left_dragging);
-    result.remove = remove.left_clicked;
+    ui_parent(ui, container)
+      ui_font_color(ui, font_color)
+      ui_border_abs(ui, v4ff(0), 0, 0) 
+      ui_background_color(ui, color_blank)
+    {
+      UI_Comm label = ui_buttonf(ui, view_label, view);
+      result.select_or_drag = (label.left_clicked || label.left_dragging);
+      result.remove = ui_buttonf(ui, S8("[X]##close_button")).left_clicked;
+      result.options = ui_buttonf(ui, S8("<o>##options_button")).left_clicked;
+    }
   }
   return(result);
+}
+
+void
+ui_do_view(App_State *app_state, View *view)
+{
+  if(view->is_watch) 
+  {
+    watch_panel(app_state, view);
+  }
+  else
+  {
+    ui_do_ui_rule_from_e_value(app_state, &view->eval_interp.memory, &view->eval_interp.value);
+  }
 }
 
 void
@@ -2868,7 +2278,7 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
             if(view_id_is_valid(app_state->moving_view))
             {
               draw_tab_button_kind(TabButtonKind_DragDest, app_state->moving_view, app_state, panel, 
-                                   ui_keyf("fake_tab_move_dest_%p", panel), false);
+                                   ui_keyf("fake_tab_move_dest_%p", panel), false, S8("Tab"));
             }
           }
           else
@@ -2877,6 +2287,8 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
             {
               View_ID view = tab->view;
               Assert(view_id_is_valid(view));
+              View *v = view_from_id(app_state, view);
+              String8 view_label = S8Struct(v->title, v->title_size);
               
               B32 remove = false;
               ui_set_next_padding(ui, pad2_equal(0));
@@ -2917,7 +2329,7 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
                   panel->move_view_ref = tab->view;
                   panel->move_view_before_ref = true;
                   draw_tab_button_kind(TabButtonKind_DragDest, view, app_state, panel, 
-                                       tab_button_container_key, is_selected_tab);
+                                       tab_button_container_key, is_selected_tab, view_label);
                 }
                 
                 // NOTE(erb): draw the actuall tab (or original drag ghost)
@@ -2925,7 +2337,7 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
                   Tab_Button_Kind tab_kind = (view_id_equals(app_state->moving_view, view)
                                               ? TabButtonKind_DragSource : TabButtonKind_Regular);
                   Tab_Button_Result button_result = draw_tab_button_kind(tab_kind, view, app_state, panel, 
-                                                                         tab_button_container_key, is_selected_tab);
+                                                                         tab_button_container_key, is_selected_tab, view_label);
                   // NOTE(erb): start global view/tab drag
                   if(button_result.select_or_drag)
                   {
@@ -2933,6 +2345,10 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
                     app_state->moving_view = view;
                   }
                   remove = button_result.remove;
+                  if(button_result.options)
+                  {
+                    panel->is_editing_view_params = true;
+                  }
                 }
                 
                 // NOTE(erb): draw the dragging tab destination - AFTER this button 
@@ -2944,7 +2360,7 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
                   panel->move_view_ref = tab->view;
                   panel->move_view_before_ref = false;
                   draw_tab_button_kind(TabButtonKind_DragDest, view, app_state, panel, 
-                                       tab_button_container_key, is_selected_tab);
+                                       tab_button_container_key, is_selected_tab, view_label);
                 }
                 
               }
@@ -2953,6 +2369,7 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
               if(remove) // NOTE(erb): removal
               {
                 panel_remove_view_reset_current(panel, view);
+                panel->is_editing_view_params = false;
               }
             }
           }
@@ -2991,16 +2408,60 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
           AssertImplies(panel->first_tab != 0, view_id_is_valid(panel->current_view));
           if(view_id_is_valid(panel->current_view))
           {
+            // NOTE(erb): actually do the thing
             Assert(panel_tab_from_view(panel, panel->current_view) != 0);
-            View_Kind kind = view_kind_from_id(app_state, panel->current_view);
-            switch(kind)
+            View *view = view_from_id(app_state, panel->current_view);
+            ui_do_view(app_state, view);
+            
+            panel->is_editing_view_params = (!view->is_watch && panel->is_editing_view_params && !key_pressed(ui, GFXKey_Escape));
+            if(panel->is_editing_view_params) 
             {
-              case ViewKind_Lister    :      lister_panel(app_state, panel->current_view); break;
-              case ViewKind_Calendar  :    calendar_panel(app_state, panel->current_view); break;
-              case ViewKind_Table     :       table_panel(app_state, panel->current_view); break;
-              case ViewKind_Watch     :       watch_panel(app_state, panel->current_view); break;
-              case ViewKind_EventFocus: event_focus_panel(app_state, panel->current_view); break;
-              case ViewKind_Tags      :        tags_panel(app_state, panel->current_view); break;
+              // NOTE(erb): options editing
+              Scratch options_scratch = arena_get_scratch(scratch.arena);
+              
+              I32 selection_cursor = 0;
+              B32 enter_pressed = false;
+              U32 eval_max_depth = 3;
+              IR_Type_Table *type_table = &app_state->type_table;
+              
+#if 0
+              IR_Type_ID *custom_exp_types = app_state->ir_view_types;
+              U32 custom_exp_count = app_state->ir_view_types_count;
+#else
+              IR_Type_ID *custom_exp_types = 0;
+              U32 custom_exp_count = 0;
+#endif
+              
+              Eval_Watch_ID watch_id = watch_id_make(0, 0);
+              Watch_Expansion_State expansion_state = {0};
+              watch_expansion_state_init(&expansion_state);
+              watch_expansion_toggle(&expansion_state, watch_id);
+              
+              // NOTE(erb): tiny watch window?
+              {
+                Eval_Block_Tree *tree = push_block_tree_expanded(options_scratch.arena, S8("options"), S8Z(), watch_id,
+                                                                 &view->eval_interp.value, &view->eval_interp.memory, 
+                                                                 type_table, custom_exp_types, custom_exp_count);
+                
+                // NOTE(erb): block list
+                Eval_Block_Range_List block_list = {0};
+                push_block_range_list_from_tree_recur(options_scratch.arena, &block_list, tree, 0);
+                
+                ui_center_popup(ui)
+                {
+                  ui_set_next_sizing(ui, ui_grow(), ui_grow());
+                  ui_set_next_background_color(ui, color_black);
+                  ui_set_next_layout_axis(ui, Axis2_Y);
+                  ui_parentf(ui, UIFlags_DrawBackGround, S8Z())
+                  {
+                    ui_watch_window_rows(app_state, ui, &expansion_state, 
+                                         type_table, &block_list, selection_cursor, 
+                                         enter_pressed, eval_max_depth, false);
+                  }
+                }
+              }
+              
+              scratch_end(&options_scratch);
             }
           }
           
@@ -3020,36 +2481,84 @@ panel_leaf_ui(App_State *app_state, Range_V2f client_rect, F32 split_region_half
       {
         panel->is_picking_new_tab = true;
       }
-      
       UI_Key tab_popup_key = ui_keyf("tab_panel_popup_%p", panel);
-      
       if(panel->is_picking_new_tab)
       {
-        UI_Cell *cell_arr = PushArray(scratch.arena, ViewKind_COUNT, UI_Cell);
-        U32 cell_idx = 0;
-        for(U32Each(kind, ViewKind_COUNT))
+#define T(s, e) (UI_Cell){ .label = S8Lit(s), .filter_needle = S8Lit(s), .flags = UICellFlags_Clickable, .data = (void *)e, }
+        UI_Cell tabs_opt_cell_arr[] = 
         {
-          UI_Cell *cell = (cell_arr + cell_idx++);
-          cell->label = label_from_view_kind((View_Kind)kind);
-          cell->filter_needle = cell->label;
-          cell->flags = UICellFlags_Clickable;
-          cell->data = (void *)(U64)kind;
-        }
-        
+          T("Calendar", "calendar()"),
+          T("Lister", "lister(events)"),
+          T("Watch", "watch"),
+          T("New Event", "focus(event(1))"),
+          T("Tags", "lister(tags)"),
+        };
+#undef T
         if(!was_picking_new_tab)
         {
           ui_push_nav_interface_key(ui, tab_popup_key);
         }
         
         UI_Lister_Popup_Result result = ui_cell_lister_filtered_floating_popup(ui, new_tab_button_bottom_left, tab_popup_key, 
-                                                                               cell_arr, ViewKind_COUNT, S8("Tab"));
+                                                                               tabs_opt_cell_arr, ArraySize(tabs_opt_cell_arr), 
+                                                                               S8("Tab"));
         
         if(result.lister.selected != 0)
         {
-          // NOTE(erb): actually create the tab
-          View_Kind picked_kind = (View_Kind)(U64)result.lister.selected->data;
-          View_ID view = push_view(app_state, (View_Kind)picked_kind);
-          panel_append_view_set_current(panel, view);
+          String8 expr_str = S8CStr((char *)result.lister.selected->data);
+          // NOTE(erb): CRITICAL CODE (creating tab/view/expr thing)
+          
+          // NOTE(erb): push view
+          View *new_view = push_view(app_state);
+          
+          B32 is_watch = str8_equals(expr_str, S8("watch"));
+          
+          new_view->is_watch = is_watch;
+          
+          // NOTE(erb): title
+          new_view->title_size = (U32)Min(ArraySize(new_view->title), result.lister.selected->label.size);
+          ArrayCopy(result.lister.selected->label.value, new_view->title, new_view->title_size);
+#if 0            
+          // TODO(erb): translate to new IR Type system
+          Expr_Environment env = {0};
+          if(error.value == 0)
+          {
+            env.data = (void *)app_state;
+            expr_env_append_var_func(&env, scratch.arena, S8("events"), app_get_events_expr);
+            expr_env_append_var_func(&env, scratch.arena, S8("event"), app_get_event_from_id_expr);
+            expr_env_append_var_func(&env, scratch.arena, S8("tags"), app_get_tags_expr);
+            expr_env_append_var_func(&env, scratch.arena, S8("raw"), app_ui_rule_raw);
+            expr_env_append_var_expr_func(&env, scratch.arena, S8("columns"), app_expand_arg_columns_ui_rule);
+            
+            expr_env_append_var_call(&env, scratch.arena, S8("calendar"), app_ui_rule_calendar);
+            expr_env_append_var_call(&env, scratch.arena, S8("focus"), app_ui_rule_focus);
+            
+            Expr_Value now_value = {0};
+            now_value.dt = os_get_local_date_time();
+            now_value.type = ExprType_DateTime;
+            expr_env_append_var_value(&env, scratch.arena, S8("now"), now_value);
+          }
+#endif
+          
+          if(!is_watch)
+          {
+            // NOTE(erb): init arena
+            arena_init(&new_view->eval_arena, new_view->eval_memory, ArraySize(new_view->eval_memory));
+            
+            // TODO(erb): change this to global expr storage!!!!
+            String8 error = {0};
+            E_Value_Interp interp = e_value_from_text(&new_view->eval_arena, expr_str, &app_state->type_table,
+                                                      app_state->top_global_iden, app_state->top_symbol_type, &error);
+            Assert(error.value == 0);
+            new_view->eval_interp = interp;
+            
+            // NOTE(erb): check if is view type
+            B32 is_view_type = rose_ir_type_is_view_type(app_state, interp.value.type);
+            Assert(is_view_type);
+          }
+          
+          // NOTE(erb): append view
+          panel_append_view_set_current(panel, id_from_view(app_state, new_view));
           panel->is_picking_new_tab = false;
         }
         if(result.canceled)
@@ -3128,7 +2637,7 @@ dir_entr_ht_add(Arena *arena, Directory_Entries_Hash_Table *ht, Directory_Entry_
     }
   }
   
-  if(result == 0)
+  if(AssertOrBool(result == 0))
   {
     if(first->path.size != 0)
     {
@@ -3137,7 +2646,6 @@ dir_entr_ht_add(Arena *arena, Directory_Entries_Hash_Table *ht, Directory_Entry_
     *first = *new_entries;
     result = first;
   }
-  else InvalidCodePath;
   return(result);
 }
 
@@ -3358,7 +2866,7 @@ COMMAND_FUNC(generate_stub_file)
   
   Date_Time today = os_get_local_date_time();
   
-  for(U32Each(idx, 20))
+  for(EachU32(idx, 20))
   {
     str8_builderf(scratch.arena, &sb,
                   "event:\n"
@@ -3383,7 +2891,7 @@ COMMAND_FUNC(generate_stub_file)
                   today.time.hour, today.time.minute);
     
 #if 0
-    for(U32Each(idx, event->tag_count))
+    for(EachU32(idx, event->tag_count))
     {
       str8_builderf(scratch.arena, &sb, "   tag: %llu\n", event->tags[idx]);
     }
@@ -3492,6 +3000,77 @@ cmd_info_from_kind(Command_Kind kind)
   return(info);
 }
 
+E_FUNC_ADDR_IMPL(sum_func_address) // Arena *arena, E_Value *args, U32 arg_count, Buffer *stack_memory, IR_Type_Table *type_table, void *user_data
+{
+  E_Value result = {0};
+  result.type = ir_builtin_type_id_u32;
+  
+  Assert(arg_count == 2);
+  U32 a = *EValueGetPtr(stack_memory, &args[0], U32);
+  U32 b = *EValueGetPtr(stack_memory, &args[1], U32);
+  U32 sum = a + b;
+  
+  U8 *memory = e_value_set_push_memory(&result, arena, sizeof(U32));
+  mem_copy((U8 *)&sum, memory, sizeof(U32));
+  return(result);
+}
+
+IR_Type *
+ir_type_record_from_rose_meta(App_State *app_state, String8 name, U32 byte_count,
+                              ROSE_Meta_Field *meta_fields, U32 meta_field_count)
+{
+  IR_Type_Table *type_table = &app_state->type_table;
+  IR_Type *record = ir_type_table_next(type_table, IRTypeKind_Record);
+  record->record_name = name;
+  record->byte_count = byte_count;
+  
+  Assert(meta_field_count >= 1 && 
+         str8_equals(meta_fields[0].name, rose_meta_ui_rule_field_name_str8) &&
+         meta_fields[0].byte_offset == 0);
+  
+  for(EachPtr(ROSE_Meta_Field, meta, meta_fields, meta_field_count))
+  {
+    IR_Type_ID type_id_table[] =
+    {
+      [ROSEMetaTypeKind_U32] = ir_builtin_type_id_u32,
+      [ROSEMetaTypeKind_B32] = ir_builtin_type_id_b32,
+      [ROSEMetaTypeKind_Calendar_Date] = app_state->ir_type_id__calendar_date,
+    };
+    StaticAssert(ArraySize(type_id_table) == ROSEMetaTypeKind_COUNT, type_id_table_has_all_rose_types);
+    Assert(meta->type_kind < ArraySize(type_id_table));
+    IR_Type_ID type_id = type_id_table[meta->type_kind];
+    Assert(!ir_type_id_is_null(type_id));
+    IR_Field_Type *ir_field = ir_type_next_field(record, meta->name, type_id);
+    ir_field->byte_offset = meta->byte_offset;
+  }
+  
+  return(record);
+}
+
+#define IRTypeFromROSEMetaViewStruct(app_state, Struct_Name) \
+ir_type_record_from_rose_meta((app_state), S8(Stringify(Struct_Name)), sizeof(Struct_Name), \
+ROSEMetaViewStructFieldsName(Struct_Name), \
+ArraySize(ROSEMetaViewStructFieldsName(Struct_Name)))
+
+/////////////////////////////////////////////////////////////////////////
+// NOTE(erb): view types & functions
+
+E_FUNC_ADDR_IMPL(calendar_view_func_address) // Arena *arena, E_Value *args, U32 arg_count, Buffer *stack_memory, IR_Type_Table *type_table, void *user_data
+{
+  Assert(user_data != 0);
+  App_State *app_state = (App_State *)user_data;
+  
+  E_Value result = {0};
+  result.type = app_state->ir_type_id__calendar_view;
+  U8 *base = e_value_set_push_memory(&result, arena, sizeof(ROSE_Calendar_View));
+  ROSE_Calendar_View *cal_view = (ROSE_Calendar_View *)base;
+  cal_view->calendar_start = os_get_local_date_time().date;
+  cal_view->calendar_grid_x = 1;
+  cal_view->calendar_grid_y = 2;
+  cal_view->ROSE_META_UI_RULE_FIELD_NAME = ROSEUIRule_Calendar;
+  return(result);
+}
+
 UPDATE_AND_RENDER_FUNC(update_and_render)
 // App_Memory *memory, Q2D_State *render_state, 
 // Q2D_Font *font, V2i client_size, GFX_Event_List *events,
@@ -3580,21 +3159,166 @@ UPDATE_AND_RENDER_FUNC(update_and_render)
       load_state(app_state);
       
       // NOTE(erb): main panel
-      panel_append_view_set_current(app_state->root_panel, push_view(app_state, ViewKind_Watch));
+      View *start_view = push_view(app_state);
+      start_view->is_watch = true;
+      panel_append_view_set_current(app_state->root_panel, id_from_view(app_state, start_view));
+      {
+        String8 tab_title = S8("Start Watch");
+        start_view->title_size = (U32)Min(ArraySize(start_view->title), tab_title.size);
+        ArrayCopy(tab_title.value, start_view->title, start_view->title_size);
+      }
       
-#if 0
-      // NOTE(erb): test events
-      spawn_test_tasks(app_state);
-      
-      // NOTE(erb): test tags
-      create_event_tag(app_state, S8("cat blue"), color_blue);
-      create_event_tag(app_state, S8("cat red"), color_red);
-      create_event_tag(app_state, S8("cat yellow"), color_yellow);
-#endif
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////
+      // NOTE(erb): new eval system work!!!!!!!
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////
+      {
+        IR_Type_Table *type_table = &app_state->type_table;
+        ir_type_table_init(type_table);
+        
+        IR_Type *u32_type = ir_type_from_id(type_table, ir_builtin_type_id_u32);
+        //IR_Type *b32_type = ir_type_from_id(&type_table, ir_builtin_type_id_b32);
+        
+        {
+          IR_Symbol_Type *func_symbol = &app_state->func_symbol;
+          E_Global_Iden *func_addr = &app_state->func_addr;
+          
+          // NOTE(erb): type
+          IR_Type *type = ir_type_table_next(type_table, IRTypeKind_Function);
+          type->sub_type = ir_builtin_type_id_u32;
+          ir_type_append_field_packed(type, S8Z(), u32_type);
+          ir_type_append_field_packed(type, S8Z(), u32_type);
+          
+          func_symbol->type = type->id;
+          func_symbol->name = S8("sum");
+          SLLStackPush(app_state->top_symbol_type, func_symbol);
+          
+          // NOTE(erb): address
+          func_addr->name = func_symbol->name;
+          func_addr->type = type->id;
+          func_addr->func = sum_func_address;
+          func_addr->is_value_not_func = false;
+          SLLStackPush(app_state->top_global_iden, func_addr);
+        }
+        
+        {
+          U32 iden_value = app_state->iden_value;
+          IR_Symbol_Type *iden_symbol = &app_state->iden_symbol;
+          E_Global_Iden *iden_addr = &app_state->iden_addr;
+          
+          iden_symbol->type = ir_builtin_type_id_u32;
+          iden_symbol->name = S8("g_num");
+          SLLStackPush(app_state->top_symbol_type, iden_symbol);
+          
+          iden_addr->name = iden_symbol->name;
+          iden_addr->type = ir_builtin_type_id_u32;
+          iden_addr->value_bytes = S8Struct((U8 *)&iden_value, sizeof(iden_value));
+          iden_addr->is_value_not_func = true;
+          SLLStackPush(app_state->top_global_iden, iden_addr);
+        }
+        
+        {
+          Thing *thing_arr = app_state->thing_arr;
+          U32 thing_arr_size = ArraySize(app_state->thing_arr);
+#define TH(_num1, _num2, _bool1) (Thing){.num1 = _num1, .num2 = _num2, .bool1 = _bool1,}
+          thing_arr[0] = TH(1, 2, true);
+          thing_arr[1] = TH(2, 3, false);
+          thing_arr[2] = TH(3, 4, false);
+          thing_arr[3] = TH(4, 5, true);
+          thing_arr[4] = TH(420, 69, false);
+#undef TH
+          
+          IR_Symbol_Type *thing_symbol = &app_state->thing_symbol;
+          E_Global_Iden *thing_iden = &app_state->thing_iden;
+          
+          IR_Type *thing_type = ir_type_table_next(type_table, IRTypeKind_Record);
+          thing_type->record_name = S8("Thing");
+          thing_type->byte_count = sizeof(Thing); 
+          IR_Field_Type *num1_field = ir_type_next_field(thing_type, S8("num1"), ir_builtin_type_id_u32);
+          IR_Field_Type *num2_field = ir_type_next_field(thing_type, S8("num2"), ir_builtin_type_id_u32);
+          IR_Field_Type *bool1_field = ir_type_next_field(thing_type, S8("bool1"), ir_builtin_type_id_b32);
+          num1_field->byte_offset = offsetof(Thing, num1);
+          num2_field->byte_offset = offsetof(Thing, num2);
+          bool1_field->byte_offset = offsetof(Thing, bool1);
+          
+          IR_Type *thing_array = ir_type_make_array(type_table, thing_type->id);
+          IR_Field_Type *data_field = (thing_array->fields + ir_array_data_field_idx);
+          IR_Field_Type *count_field = (thing_array->fields + ir_array_count_field_idx);
+          String8 thing_array_memory = push_str8(&app_state->arena, thing_array->byte_count);
+          U8 *data_field_memory = (thing_array_memory.value + data_field->byte_offset);
+          U8 *count_field_memory = (thing_array_memory.value + count_field->byte_offset);
+          
+          U64 *data_field_ptr = (U64 *)data_field_memory;
+          *data_field_ptr = (U64)(void *)thing_arr;
+          U32 *count_field_ptr = (U32 *)count_field_memory;
+          *count_field_ptr = thing_arr_size;
+          
+          thing_symbol->type = thing_array->id;
+          thing_symbol->name = S8("g_array");
+          SLLStackPush(app_state->top_symbol_type, thing_symbol);
+          
+          thing_iden->name = thing_symbol->name;
+          thing_iden->type = thing_array->id;
+          thing_iden->is_value_not_func = true;
+          thing_iden->value_bytes = thing_array_memory;
+          SLLStackPush(app_state->top_global_iden, thing_iden);
+        }
+        
+        
+        // NOTE(erb): VIEW TYPE THINGS
+        {
+          IR_Type *calendar_date_type = 0;
+          {
+            calendar_date_type = ir_type_table_next(type_table, IRTypeKind_Record);
+            app_state->ir_type_id__calendar_date = calendar_date_type->id;
+            
+            calendar_date_type->byte_count = sizeof(Calendar_Date);
+            IR_Field_Type *year_field = ir_type_next_field(calendar_date_type, S8("year"), ir_builtin_type_id_u32);
+            IR_Field_Type *month_field = ir_type_next_field(calendar_date_type, S8("month"), ir_builtin_type_id_u32);
+            IR_Field_Type *day_field = ir_type_next_field(calendar_date_type, S8("day"), ir_builtin_type_id_u32);
+            year_field->byte_offset = offsetof(Calendar_Date, year);
+            month_field->byte_offset = offsetof(Calendar_Date, month);
+            day_field->byte_offset = offsetof(Calendar_Date, day);
+          }
+          
+          // NOTE(erb): calendar view type
+          IR_Type *calendar_view_type = 0;
+          {
+            calendar_view_type = IRTypeFromROSEMetaViewStruct(app_state, ROSE_Calendar_View);
+            
+            app_state->ir_type_id__calendar_view = calendar_view_type->id;
+            app_state->ir_view_types[app_state->ir_view_types_count++] = calendar_view_type->id;
+          }
+          
+          IR_Type *calendar_func_type = 0;
+          {
+            calendar_func_type = ir_type_table_next(type_table, IRTypeKind_Function);
+            calendar_func_type->sub_type = calendar_view_type->id;
+          }
+          
+          {
+            IR_Symbol_Type *calendar_func_symbol = &app_state->calendar_func_symbol;
+            E_Global_Iden *calendar_func_iden = &app_state->calendar_func_iden;
+            
+            calendar_func_symbol->type = calendar_func_type->id;
+            calendar_func_symbol->name = S8("calendar");
+            SLLStackPush(app_state->top_symbol_type, calendar_func_symbol);
+            
+            calendar_func_iden->type = calendar_func_type->id;
+            calendar_func_iden->name = calendar_func_symbol->name;
+            calendar_func_iden->func = calendar_view_func_address;
+            calendar_func_iden->user_data = app_state;
+            calendar_func_iden->is_value_not_func = false;
+            SLLStackPush(app_state->top_global_iden, calendar_func_iden);
+          }
+          
+          Assert(app_state->ir_view_types_count != 0);
+          Assert(!ir_type_id_is_null(app_state->ir_type_id__calendar_date));
+        }
+      }
     }
     
 #if DEBUG
-    global_debug_ctx = &app_state->debug_ctx;
+    global_ui_debug_ctx = &app_state->debug_ctx;
 #endif
   }
   
@@ -3617,7 +3341,7 @@ UPDATE_AND_RENDER_FUNC(update_and_render)
     {
       B32 triggered = false;
       Key_Combo_Set *key_map = key_map_from_cmd_kind(app_state, kind);
-      for(U32Each(idx, key_map->count))
+      for(EachU32(idx, key_map->count))
       {
         Key_Combo *combo = (key_map->combos + idx);
         if(key_pressed(ui, combo->key))
@@ -3637,7 +3361,7 @@ UPDATE_AND_RENDER_FUNC(update_and_render)
             mods[count++] = GFXKey_Alt;
           }
           triggered = true;
-          for(U32Each(key_idx, count))
+          for(EachU32(key_idx, count))
           {
             if(!key_down(ui, mods[key_idx]))
             {

@@ -101,7 +101,7 @@ OS_ENTRY_POINT()
     Scratch sh_scratch = scratch_begin(&arena, 1);
     
     String8_Array shader_names = q2d_get_shader_file_names(sh_scratch.arena);
-    for(U32Each(idx, shader_names.count))
+    for(EachU32(idx, shader_names.count))
     {
       Timed_File *file = PushStruct(arena, Timed_File);
       file->path = os_concat_path(arena, shader_search_folder, shader_names.items[idx]);
@@ -203,9 +203,9 @@ OS_ENTRY_POINT()
       
       V2f size = v2f_hada_div(v2fi(client_size), v2f((F32)x_count, (F32)y_count));
       
-      for(U32Each(y, y_count))
+      for(EachU32(y, y_count))
       {
-        for(U32Each(x, x_count))
+        for(EachU32(x, x_count))
         {
           
           F32 t = (F32)(x*y/total_count);

@@ -293,7 +293,7 @@ OS_ENTRY_POINT()
     {
       Scratch sh_scratch = scratch_begin(&arena, 1);
       String8_Array shader_names = q2d_get_shader_file_names(sh_scratch.arena);
-      for(U32Each(idx, shader_names.count))
+      for(EachU32(idx, shader_names.count))
       {
         String8 path = os_concat_path(arena, shader_search_folder, shader_names.items[idx]);
         Timed_File *file = push_timed_file(arena, path, TimedFileKind_Shader);

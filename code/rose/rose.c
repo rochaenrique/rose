@@ -71,7 +71,7 @@ push_name_chunk_list(Arena *arena, Name_Chunk **first_free, String8 str)
   Name_Chunk_List result = {0};
   U64 chunks_needed = (str.size+NAME_CHUNK_PAYLOAD_SIZE-1)/NAME_CHUNK_PAYLOAD_SIZE;
   U64 bytes_left = str.size;
-  for(U32Each(idx, chunks_needed))
+  for(EachU32(idx, chunks_needed))
   {
     Name_Chunk *chunk = *first_free;
     if(chunk)
@@ -114,7 +114,7 @@ str8_from_name_chunk_list(Arena *arena, Name_Chunk_List *chunk_list)
 void
 name_chunk_list_free_all(Name_Chunk_List *chunk_list, Name_Chunk **first_free)
 {
-  for(U32Each(idx, chunk_list->count))
+  for(EachU32(idx, chunk_list->count))
   {
     Name_Chunk *chunk = chunk_list->first;
     SLLStackPop(chunk_list->first);

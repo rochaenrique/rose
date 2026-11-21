@@ -55,7 +55,7 @@ int __stdcall WinMain(HINSTANCE instance,
   
   //- equiping
   // TODO(erb): check if the window is allready equiped!
-  for (U32Each(idx, window_count))
+  for (EachU32(idx, window_count))
   {
     B32 equipped = gfx_vulkan_equip(windows[idx]);
     if (!equipped)
@@ -65,7 +65,7 @@ int __stdcall WinMain(HINSTANCE instance,
   }
   
   //- showing
-  for (U32Each(idx, window_count))
+  for (EachU32(idx, window_count))
   {
     gfx_window_show(windows[idx]);
   }
@@ -81,7 +81,7 @@ int __stdcall WinMain(HINSTANCE instance,
       if(event->kind == GFXEventKind_WindowClose)
       {
         // NOTE(erb): array removal
-        for(U32Each(idx, window_count))
+        for(EachU32(idx, window_count))
         {
           if(windows[idx] == event->window)
           {
@@ -99,7 +99,7 @@ int __stdcall WinMain(HINSTANCE instance,
       break;
     }
     
-    for (U32Each(idx, window_count))
+    for (EachU32(idx, window_count))
     {
       GFX_Window window = windows[idx];
       gfx_vulkan_render_begin(window);

@@ -80,7 +80,6 @@ struct Key_Combo_Set
   U32 count;
 };
 
-#include "rose_eval.h"
 #include "rose_ui_widgets.h"
 #include "rose_serial.h"
 #include "rose_command.h"

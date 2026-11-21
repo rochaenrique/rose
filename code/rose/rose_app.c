@@ -38,7 +38,7 @@ B32
 event_has_tag(Event *event, Tag_ID tag)
 {
   B32 exists = false;
-  for(U32Each(idx, event->tag_count))
+  for(EachU32(idx, event->tag_count))
   {
     if(tag_id_equals(event->tags[idx], tag))
     {
@@ -52,15 +52,13 @@ event_has_tag(Event *event, Tag_ID tag)
 void
 event_push_tag(Event *event, Tag_ID tag)
 {
-  if(!event_has_tag(event, tag))
+  if(AssertOrBool(!event_has_tag(event, tag)))
   {
-    if(event->tag_count + 1 < ArraySize(event->tags))
+    if(AssertOrBool(event->tag_count + 1 < ArraySize(event->tags)))
     {
       event->tags[event->tag_count++] = tag;
     }
-    else InvalidCodePath;
   }
-  else InvalidCodePath;
 }
 
 Tag_ID 
@@ -68,7 +66,7 @@ push_event_tag(App_State *app_state, String8 name, V4f color)
 {
   Tag_ID result = tag_id_null();
   Event_Tag *tag = app_state->first_free_tag;
-  if(tag != 0)
+  if(AssertOrBool(tag != 0))
   {
     SLLStackPop(app_state->first_free_tag);
     Assert(name.size <= ArraySize(tag->name));
@@ -80,7 +78,6 @@ push_event_tag(App_State *app_state, String8 name, V4f color)
     tag->used = true;
     result = id_from_tag(app_state, tag);
   }
-  else InvalidCodePath;
   return(result);
 }
 
@@ -132,16 +129,14 @@ id_from_view(App_State *app_state, View *view)
   return(id);
 }
 
-View_ID
-push_view(App_State *app_state, View_Kind kind)
+View *
+push_view(App_State *app_state)
 {
   View *view = app_state->first_free_view;
   Assert(view);
   SLLStackPop(app_state->first_free_view);
   ZeroStruct(view);
-  view->kind = kind;
-  View_ID id = id_from_view(app_state, view);
-  return(id);
+  return(view);
 }
 
 void
@@ -152,18 +147,6 @@ view_release(App_State *app_state, View_ID id)
     View *view = view_from_id(app_state, id);
     SLLStackPush(app_state->first_free_view, view);
   }
-}
-
-View_Kind
-view_kind_from_id(App_State *app_state, View_ID id)
-{
-  View_Kind result = ViewKind_Lister;
-  if(view_id_is_valid(id))
-  {
-    View *view = view_from_id(app_state, id);
-    result = view->kind;
-  }
-  return(result);
 }
 
 String8
@@ -185,6 +168,8 @@ label_from_view_kind(View_Kind kind)
 }
 
 
+#if 0
+// NOTE(erb): view columns
 void
 columns_equal_size(View *view)
 {
@@ -192,14 +177,12 @@ columns_equal_size(View *view)
   if(view->column_count > 0)
   {
     F32 pct = 1.0f/view->column_count;
-    for(U32Each(idx, view->column_count))
+    for(EachU32(idx, view->column_count))
     {
       view->columns[idx].pct_of_row = pct;
     }
   }
 }
-
-// NOTE(erb): view columns
 
 void
 columns_remove_and_resize(View *view, U32 column_idx)
@@ -213,7 +196,7 @@ columns_remove_and_resize(View *view, U32 column_idx)
     view->columns[idx] = view->columns[idx+1];
   }
   view->column_count--;
-  for(U32Each(idx, view->column_count))
+  for(EachU32(idx, view->column_count))
   {
     view->columns[idx].pct_of_row /= (1.0f - removed_pct_of_row);
   }
@@ -233,7 +216,7 @@ columns_append_and_resize(View *view, F32 pct_of_row)
 {
   Assert(view);
   Assert(pct_of_row > 0 && pct_of_row < 1);
-  for(U32Each(idx, view->column_count))
+  for(EachU32(idx, view->column_count))
   {
     view->columns[idx].pct_of_row *= (1.0f-pct_of_row);
   }
@@ -241,6 +224,7 @@ columns_append_and_resize(View *view, F32 pct_of_row)
   new_col->pct_of_row = pct_of_row;
   return(new_col);
 }
+#endif
 
 ////////////////////////////////////////////////////
 // NOTE(erb): panels & tabs
@@ -264,11 +248,10 @@ Tab *
 panel_push_tab(Panel *panel, View_ID view)
 {
   Tab *tab = panel->first_free_tab;
-  if(tab)
+  if(AssertOrBool(tab != 0))
   {
     SLLStackPop(panel->first_free_tab);
   }
-  else InvalidCodePath;
   ZeroStruct(tab);
   tab->view = view;
   
@@ -375,13 +358,13 @@ void
 panel_remove_view_reset_current(Panel *panel, View_ID view)
 {
   Tab *tab = panel_tab_from_view(panel, view);
-  if(tab != 0)
+  if(AssertOrBool(tab != 0))
   {
-    if(tab->prev)
+    if(tab->prev != 0)
     {
       panel->current_view = tab->prev->view;
     }
-    else if(tab->next)
+    else if(tab->next != 0)
     {
       panel->current_view = tab->next->view;
     }
@@ -391,7 +374,6 @@ panel_remove_view_reset_current(Panel *panel, View_ID view)
     }
     panel_remove_tab(panel, tab);
   }
-  else InvalidCodePath;
 }
 
 

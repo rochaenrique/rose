@@ -37,7 +37,7 @@ int __stdcall WinMain(HINSTANCE instance,
   
   GFX_Window windows[32];
   
-  for (U32Each(tick, 1000000000000))
+  for (EachU32(tick, 1000000000000))
   {
     //- window creation
     for (EachElement(GFX_Window, wdw, windows))

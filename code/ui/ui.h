@@ -3,6 +3,20 @@
 #ifndef UI_H
 #define UI_H
 
+#if DEBUG
+typedef struct UI_Debug_Ctx UI_Debug_Ctx;
+struct UI_Debug_Ctx
+{
+  B32 is_expanded;
+  
+  B32 draw_text_highlight;
+  B32 draw_outer_size_line;
+  B32 draw_inner_size_line;
+};
+
+global UI_Debug_Ctx *global_ui_debug_ctx = 0;
+#endif
+
 typedef enum UI_Flags
 {
 	UIFlags_CrossOverlay   = (1<<0),
