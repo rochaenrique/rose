@@ -106,6 +106,7 @@ target:
 {
   executable: "build/win32_ui_main.exe"
   working_directory: "../../rose"
+  enabled: 1
 }
 target:
 {
@@ -133,6 +134,6 @@ tab_width: 2
 target:
 {
   executable: "build/win32_broadcast.exe"
-  working_directory: ../
-  enabled: 1
+  working_directory: "../../rose"
+  enabled: 0
 }

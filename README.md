@@ -6,6 +6,10 @@ The long-term goal is to replace the usual mix of calendar app + Todoist + Notio
 
 > **Status:** early development. Most of the work so far has gone into the foundations the app is built on, not the user-facing features yet.
 
+![Rose: a watch panel evaluating expressions next to a calendar panel](docs/screenshot.png)
+
+*Two panels side by side: a watch window evaluating `calendar()` and inspecting data, and a calendar view.*
+
 ## Highlights
 
 - **Built from scratch.** Written in C with no frameworks — platform layer, windowing, OpenGL/Vulkan rendering, font rendering and UI are all custom.

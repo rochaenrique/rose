@@ -55,7 +55,7 @@ window:
   split_x
   panels:
   {
-    0.462080:
+    0.802894:
     {
       text:
       {
@@ -118,7 +118,7 @@ window:
       text:
       {
         selected
-        expression: "file:\"C:/Users/erb/dev/rose/code/examples/win32_broadcast.c\".data"
+        expression: "file:\"C:/Users/erb/dev/rose/code/rose/rose_app.c\".data"
         auto: 1
         project: "C:/Users/erb/dev/rose/code/project.raddbg"
         query:
@@ -130,8 +130,8 @@ window:
         cursor_column: 1
         mark_line: 1
         mark_column: 1
-        cursor: 0x2f9f
-        mark: 0x2f9f
+        cursor: 0x2a24
+        mark: 0x2a24
       }
       text:
       {
@@ -149,8 +149,8 @@ window:
           input: ""
           cmd: search
         }
-        cursor: 0x1442b
-        mark: 0x1442b
+        cursor: 0x106fb
+        mark: 0x106fb
       }
       text:
       {
@@ -171,7 +171,7 @@ window:
       }
       disasm: query: input: ""
     }
-    0.537914:
+    0.197100:
     {
       0.714440: selected watch:
       {
@@ -210,12 +210,16 @@ window:
           project: "C:/Users/erb/dev/rose/code/project.raddbg"
           expression: sockaddr_in
         }
+        watch_expression:
+        {
+          project: "C:/Users/erb/dev/rose/code/project.raddbg"
+          expression: source_panel
+        }
       }
       0.285557:
       {
         watch:
         {
-          selected
           expression: "query:call_stack"
           call_stack_frame: 0.050000 0.803488 0.146512
           query:
@@ -225,14 +229,14 @@ window:
           }
         }
         watch: expression: "query:breakpoints"
-        watch: expression: "query:targets"
+        watch: selected expression: "query:targets"
       }
     }
   }
   font_size: 12
   maximized
 }
-current_path: "C:/Users/erb/dev/rose/code/build"
+current_path: "C:/Users/erb/dev/rose/code"
 keybindings:
 {
   { kill_all f5 shift }
@@ -493,7 +497,13 @@ breakpoint:
 }
 debug_info:
 {
-  path: "C:/Users/erb/dev/rose/code/build/win32_broadcast.pdb"
-  timestamp: 66231603706059
+  path: "C:/Users/erb/dev/rose/code/build/win32_ui_main.pdb"
+  timestamp: 66231665092579
+  project: "C:/Users/erb/dev/rose/code/project.raddbg"
+}
+debug_info:
+{
+  path: "C:/Users/erb/dev/rose/code/build/win32_ui_app.pdb"
+  timestamp: 66231665093159
   project: "C:/Users/erb/dev/rose/code/project.raddbg"
 }
