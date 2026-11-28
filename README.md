@@ -12,7 +12,7 @@ The long-term goal is to replace the usual mix of calendar app + Todoist + Notio
 
 ## Highlights
 
-- **Built from scratch.** Written in C with no frameworks — platform layer, windowing, OpenGL/Vulkan rendering, font rendering and UI are all custom.
+- **Built from scratch.** Written in C with no frameworks — platform layer, windowing, OpenGL rendering (plus a very basic experimental Vulkan backend), font rendering and UI are all custom.
 - **Expression evaluator.** Rose has its own expression language for querying the app's data — events, days, dates — so views and filters can be defined dynamically, e.g. `filter(events, now().date)` for "today".
 - **Dynamic UI.** Views are driven by evaluated expressions, so the interface can be reshaped by what you ask it to show rather than by fixed screens.
 - **Panel system.** A flexible, tiling panel layout for arranging calendars, lists and inspectors side by side.
@@ -22,7 +22,7 @@ The long-term goal is to replace the usual mix of calendar app + Todoist + Notio
 ```
 code/
   base/      core library: memory arenas, strings, math, time, OS layer
-  gfx/       windowing + rendering backends (OpenGL, Vulkan, Win32, Linux)
+  gfx/       windowing + rendering (OpenGL; minimal Vulkan experiment; Win32, Linux)
   fnt/       font loading and rasterization
   ui/        immediate-mode UI core and basic widgets
   token/     tokenizer
